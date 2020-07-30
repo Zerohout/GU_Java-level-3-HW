@@ -6,7 +6,11 @@
 
     <groupId>Homeworks</groupId>
     <artifactId>GU_Java-level-3-HW</artifactId>
+    <packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
+    <modules>
+        <module>lesson1</module>
+    </modules>
 
 
 </project>
