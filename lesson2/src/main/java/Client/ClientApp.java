@@ -9,9 +9,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 
-import Other.ChatBase;
-import Other.GUIHelper;
-import Server.Server;
+import Helpers.ChatBase;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 
@@ -23,21 +21,20 @@ public class ClientApp extends ChatBase {
     private DataInputStream in;
     private DataOutputStream out;
     private boolean isWorking = true;
+    public static boolean isSupSevMonitors;
 
-    public ClientApp(String host, int port, boolean autoAuth) {
+    public ClientApp(String host, int port, boolean autoAuth, boolean isSupSevMonitors) {
         try {
             this.socket = new Socket(host, port);
             this.in = new DataInputStream(socket.getInputStream());
             this.out = new DataOutputStream(socket.getOutputStream());
             clientCounter++;
+            prepareGUI(socket);
             new Thread(this::readMessage).start();
+            doAutoAuth(autoAuth);
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        prepareGUI(socket);
-
-        doAutoAuth(autoAuth);
     }
 
     //region Text methods
@@ -46,10 +43,8 @@ public class ClientApp extends ChatBase {
             String msg;
             try {
                 msg = in.readUTF();
-
                 if (msg.startsWith("/")) commandListener(msg);
                 else sendLocalMessage(msg);
-
             } catch (IOException e) {
                 //e.printStackTrace();
                 close();
@@ -58,7 +53,8 @@ public class ClientApp extends ChatBase {
         }
     }
 
-    private void sendMessage(String msg) {
+    @Override
+    protected synchronized void sendMessage(String msg) {
         if (msg.startsWith("/")) {
             try {
                 commandListener(msg);
@@ -77,7 +73,6 @@ public class ClientApp extends ChatBase {
     }
 
     private void commandListener(String msg) throws IOException {
-        if ((msg.startsWith(Server.SERVER_NAME))) msg = msg.replace(Server.SERVER_NAME, "");
         if (msg.startsWith("//")) {
             setTitle(msg.replace("//", ""));
             setVisible(false);
@@ -94,7 +89,7 @@ public class ClientApp extends ChatBase {
     }
 
     private void doAutoAuth(boolean isAutoAuth) {
-        if(!isAutoAuth) return;
+        if (!isAutoAuth) return;
         sendMessage(String.format("/reg client#%1$d 1234 client#%1$d", clientCounter));
         sendMessage(String.format("/auth client#%d 1234", clientCounter));
     }
@@ -115,7 +110,7 @@ public class ClientApp extends ChatBase {
     }
 
     //region GUI methods
-    private void prepareGUI(Socket socket) {
+    private synchronized void prepareGUI(Socket socket) {
         setTitle("Клиент " + socket.toString());
         setLayout(new BorderLayout());
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
@@ -125,19 +120,14 @@ public class ClientApp extends ChatBase {
         setLocation(FrameLocation.getFrameLocation());
 
         addComponents();
-
         setVisible(true);
     }
 
     private void addComponents() {
         this.chatArea = new JTextArea();
         this.msgInputField = new JTextField();
-        addChatArea(getContentPane(),chatArea);
-
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        addMsgInputField(bottomPanel,msgInputField, () -> sendMessage(msgInputField.getText()));
-        addBtnSendMsg(bottomPanel, () -> sendMessage(msgInputField.getText()));
-        add(bottomPanel, BorderLayout.SOUTH);
+        addChatArea(getContentPane(), chatArea);
+        addBottomPanel(this);
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -176,13 +166,13 @@ public class ClientApp extends ChatBase {
 
         //region public getters and setters
         public static Dimension getFrameSize() {
-            return monitors.length == 1 ?
-                    new Dimension(getScreenSize().width / 3, getScreenSize().height / 2)
-                    : new Dimension(getScreenSize().width / 4 - 25, getScreenSize().height / 2 - 50);
+            return isSupSevMonitors ?
+                    new Dimension(getScreenSize().width / 4 - 25, getScreenSize().height / 2 - 50)
+                    : new Dimension(getScreenSize().width / 3, getScreenSize().height / 2);
         }
 
         public static int getFrameIndex() {
-            if (monitors.length > 1) {
+            if (isSupSevMonitors) {
                 for (var i = 0; i < frameLocations.length; i++) {
                     if (frameLocations[i].isClose()) return i;
                 }

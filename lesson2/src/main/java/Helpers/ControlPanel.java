@@ -1,4 +1,4 @@
-package Other;
+package Helpers;
 
 import Client.ClientApp;
 import Server.ServerApp;
@@ -6,23 +6,34 @@ import Server.ServerApp;
 import javax.swing.*;
 import java.awt.*;
 
+import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 import static java.awt.GridBagConstraints.*;
 
 public class ControlPanel extends JFrame {
-
     private JCheckBox autoAuthChcBox;
-    private JButton addClientBtn;
+    private JCheckBox supSevMonitorsChcBox;
+    private JButton createClientBtn;
     private JButton openServerBtn;
     private JTextField serverPortTField;
+
     private int openedClientFramesCount;
     private int port;
+    private int monitorsCount = getLocalGraphicsEnvironment().getScreenDevices().length;
 
     public ControlPanel() {
         prepareGUI();
     }
 
-    private boolean getCHeckBoxStatus() {
+    private boolean getAutoAuthChcBoxStatus() {
         return autoAuthChcBox.isSelected();
+    }
+
+    private boolean getSupSevMonitorsChcBoxStatus() {
+        return supSevMonitorsChcBox.isSelected();
+    }
+
+    public void setSupSevMonitorsChcBoxEnabled(boolean isEnabled) {
+        supSevMonitorsChcBox.setEnabled(isEnabled);
     }
 
     //region GUI methods
@@ -47,53 +58,71 @@ public class ControlPanel extends JFrame {
     private void addComponents() {
         addServerComponents();
         addClientComponents();
+        setComponentsEnabled(false);
     }
 
+    //region Adding server components
     private void addServerComponents() {
         addEmptyRow(0);
 
-        createServerPortTField();
-        createOpenServerBtn();
-
         placeComponent(getContentPane(), new JLabel("Порт сервера"), 0, 1, 1, 50, NONE, CENTER);
-        placeComponent(getContentPane(), serverPortTField, 0, 2, 1, 50, HORIZONTAL, CENTER);
-        placeComponent(getContentPane(), openServerBtn, 1, 1, 2, 10, NONE, WEST);
+        addServerPortTField();
+        addOpenServerButton();
 
         addEmptyRow(3);
     }
-    private void addClientComponents() {
-        autoAuthChcBox = new JCheckBox();
-        createAddClientBtn();
 
-        placeComponent(getContentPane(), createAuthPanel(), 3, 2, HORIZONTAL, SOUTH);
-        placeComponent(getContentPane(), addClientBtn, 4, 2, NONE, NORTH);
-        addEmptyRow(5);
-    }
-
-    //region Create components
-    private void createServerPortTField(){
+    private void addServerPortTField() {
         serverPortTField = new JTextField();
         serverPortTField.setText("8834");
         serverPortTField.setSize(100, 25);
+        placeComponent(getContentPane(), serverPortTField, 0, 2, 1, 50, HORIZONTAL, CENTER);
     }
 
-    private JPanel createAuthPanel() {
-        var autoAuthPanel = new JPanel();
-        autoAuthPanel.setLayout(new FlowLayout());
-        autoAuthPanel.add(autoAuthChcBox);
-        autoAuthPanel.add(new JLabel("Авто аутентификация клиентов (кроме первого открытого)"));
-        return autoAuthPanel;
-    }
-
-    private void createOpenServerBtn() {
+    private void addOpenServerButton() {
         openServerBtn = new JButton("Открыть сервер");
         openServerBtn.addActionListener(e -> openServerAction());
+        placeComponent(getContentPane(), openServerBtn, 1, 1, 2, 10, NONE, WEST);
+    }
+    //endregion
+
+    //region Adding client components
+    private void addClientComponents() {
+        addSupSevMonitorsChcBox();
+        addAutoAuthPanel();
+        addCreateClientButton();
+        addEmptyRow(6);
     }
 
-    private void createAddClientBtn() {
-        addClientBtn = new JButton("Добавить клиента");
-        addClientBtn.addActionListener(e -> addClientAction());
-        addClientBtn.setEnabled(false);
+    private void addSupSevMonitorsChcBox() {
+        if (monitorsCount > 1) {
+            supSevMonitorsChcBox = new JCheckBox();
+            supSevMonitorsChcBox.setSelected(true);
+
+            var supSevMonitors = new JPanel();
+            supSevMonitors.setLayout(new FlowLayout());
+            supSevMonitors.add(supSevMonitorsChcBox);
+            supSevMonitors.add(new JLabel("Включить поддержку 2-х мониторов"));
+
+            placeComponent(getContentPane(), supSevMonitors, 3, 2, HORIZONTAL, SOUTH);
+        }
+    }
+
+    private void addCreateClientButton() {
+        createClientBtn = new JButton("Добавить клиента");
+        createClientBtn.addActionListener(e -> createClientAction());
+        placeComponent(getContentPane(), createClientBtn, 5, 2, NONE, NORTH);
+    }
+
+    private void addAutoAuthPanel() {
+        autoAuthChcBox = new JCheckBox();
+        var autoAuthPanel = new JPanel();
+
+        autoAuthPanel.setLayout(new FlowLayout());
+        autoAuthPanel.add(autoAuthChcBox);
+        autoAuthPanel.add(new JLabel("Авто аутентификация клиентов"));
+
+        placeComponent(getContentPane(), autoAuthPanel, 4, 2, HORIZONTAL, SOUTH);
     }
     //endregion
 
@@ -106,33 +135,37 @@ public class ControlPanel extends JFrame {
         }
         new Thread(() -> {
             new ServerApp(this, port);
-            setOpenServerBtnStatus(false);
-            setAddClientBtnStatus(true);
+            setComponentsEnabled(true);
         }).start();
     }
 
-    private void addClientAction() {
-        if (getCHeckBoxStatus()) {
+    private synchronized void createClientAction() {
+        createClientBtn.setEnabled(false);
+        if (supSevMonitorsChcBox.isEnabled()) {
+            ClientApp.isSupSevMonitors = getSupSevMonitorsChcBoxStatus();
+            supSevMonitorsChcBox.setEnabled(false);
+        }
+        if (getAutoAuthChcBoxStatus()) {
             new Thread(() -> {
-                new ClientApp("localhost", port, openedClientFramesCount != 0);
+                new ClientApp("localhost", port, openedClientFramesCount != 0, getSupSevMonitorsChcBoxStatus());
             }).start();
         } else {
             new Thread(() -> {
-                new ClientApp("localhost", port, false);
+                new ClientApp("localhost", port, false, getSupSevMonitorsChcBoxStatus());
             }).start();
         }
         openedClientFramesCount++;
+        createClientBtn.setEnabled(true);
     }
 
-    public void setOpenServerBtnStatus(boolean isEnabled) {
-        setAddClientBtnStatus(!isEnabled);
-        serverPortTField.setEnabled(isEnabled);
-        openServerBtn.setEnabled(isEnabled);
+    public void setComponentsEnabled(boolean isEnabled) {
+        createClientBtn.setEnabled(isEnabled);
+        autoAuthChcBox.setEnabled(isEnabled);
+        supSevMonitorsChcBox.setEnabled(isEnabled);
+        serverPortTField.setEnabled(!isEnabled);
+        openServerBtn.setEnabled(!isEnabled);
     }
 
-    private void setAddClientBtnStatus(boolean isEnabled) {
-        addClientBtn.setEnabled(isEnabled);
-    }
     //endregion
 
     //endregion

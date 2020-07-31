@@ -1,7 +1,8 @@
 package Server;
 
-import Other.ChatBase;
-import Other.ControlPanel;
+import Helpers.ChatBase;
+import Helpers.ControlPanel;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -17,7 +18,8 @@ public class ServerApp extends ChatBase {
         server = new Server(port, this);
     }
 
-    private void sendServerMessage(String msg) {
+    @Override
+    protected synchronized void sendMessage(String msg) {
         server.sendServerMessage(msg);
         msgInputField.setText("");
         msgInputField.grabFocus();
@@ -51,18 +53,16 @@ public class ServerApp extends ChatBase {
         this.chatArea = new JTextArea();
         this.msgInputField = new JTextField();
         addChatArea(this, chatArea);
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        addMsgInputField(bottomPanel,msgInputField, () -> sendServerMessage(msgInputField.getText()));
-        addBtnSendMsg(bottomPanel, () -> sendServerMessage(msgInputField.getText()));
-        add(bottomPanel, BorderLayout.SOUTH);
+        addBottomPanel(this);
 
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                controlPanel.setSupSevMonitorsChcBoxEnabled(true);
                 isWorking = false;
                 super.windowClosing(e);
-                controlPanel.setOpenServerBtnStatus(true);
-                sendServerMessage("/end");
+                controlPanel.setComponentsEnabled(false);
+                sendMessage("/end");
             }
         });
     }

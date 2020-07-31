@@ -1,9 +1,10 @@
-package Server;
+package AuthService;
 
-import Other.IAuthService;
+import Server.Server;
 
 import java.util.ArrayList;
 import java.util.List;
+
 
 public class BaseAuthService implements IAuthService {
     private List<Entry> entries;
@@ -11,7 +12,7 @@ public class BaseAuthService implements IAuthService {
 
     public BaseAuthService(Server server) {
         this.server = server;
-        entries =  new ArrayList<>();
+        entries = new ArrayList<>();
     }
 
     @Override
@@ -34,9 +35,9 @@ public class BaseAuthService implements IAuthService {
         return null;
     }
 
-    public boolean registerNewUser(String login, String pass, String nickname){
-        var newUser = new Entry(login,pass,nickname);
-        if(getNickByLoginAndPass(login, pass) != null) return false;
+    public boolean registerNewUser(String login, String pass, String nickname) {
+        var newUser = new Entry(login, pass, nickname);
+        if (getNickByLoginAndPass(login, pass) != null) return false;
 
         entries.add(newUser);
         return true;
