@@ -22,7 +22,7 @@ public class Client {
             this.socket = socket;
             this.in = new DataInputStream(socket.getInputStream());
             this.out = new DataOutputStream(socket.getOutputStream());
-            this.name = "";
+            this.name = socket.toString();
             new Thread(this::readMessage).start();
         } catch (IOException e) {
             throw new RuntimeException("Error occurred during client initialization");
@@ -44,55 +44,49 @@ public class Client {
                 msg = in.readUTF();
             } catch (IOException e) {
                 //e.printStackTrace();
-                closeConnection();
+                close();
                 return;
             }
 
             if (msg.startsWith("/")) {
                 commandListener(msg);
             } else {
-                if (!isAuth) {
-                    name = socket.toString();
-                }
                 server.broadcastMessage(String.format("%s: %s", name, msg));
             }
         }
     }
 
     public synchronized void sendMessage(String msg) {
-        if ((msg.startsWith(Server.SERVER_NAME))) {
-           var tempMsg = msg.replace(Server.SERVER_NAME, "");
-           if(tempMsg.startsWith("/")){
-               commandListener(tempMsg);
-               return;
-           }
+        if (msg.startsWith(Server.SERVER_NAME) && msg.replace(Server.SERVER_NAME, "").startsWith("/")) {
+            msg = msg.replace(Server.SERVER_NAME, "");
         }
         if (msg.startsWith("/")) {
             commandListener(msg);
             return;
         }
         try {
-            if (out == null) closeConnection();
-            out.writeUTF(msg);
+            if (out == null) close();
+            else out.writeUTF(msg);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+
     private synchronized void commandListener(String msg) {
         if (msg.startsWith("/end")) {
-            closeConnection();
+            close();
         } else if (msg.startsWith("/authok")) {
-           authokCommand(msg);
+            authokCommand(msg);
         } else if (!isAuth) {
             server.clientAuthentication(this, msg);
         } else {
-            msg = String.format("/command %s %s", name, msg);
+            msg = String.format("//? %s %s", name, msg);
             server.broadcastMessage(msg);
         }
     }
 
-    private void authokCommand(String msg){
+    private void authokCommand(String msg) {
         isAuth = true;
         msg = msg.replace("/authok ", "");
         name = msg;
@@ -104,18 +98,20 @@ public class Client {
         }
     }
 
-    private void closeConnection() {
+    private void close() {
         isOnline = false;
-        if (isAuth) {
-            server.unsubscribe(this);
-        } else {
-            server.sendLocalMessage(socket.toString() + " disconnected");
-        }
+        if (isAuth) server.unsubscribe(this);
+        else server.sendLocalMessage(socket.toString() + " disconnected");
         try {
             if (!socket.isClosed()) out.writeUTF("/end");
         } catch (IOException e) {
             e.printStackTrace();
+        }finally {
+            closeConnection();
         }
+    }
+
+    private void closeConnection(){
         try {
             in.close();
             out.close();

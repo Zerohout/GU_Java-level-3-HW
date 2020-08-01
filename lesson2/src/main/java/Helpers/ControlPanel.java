@@ -120,7 +120,7 @@ public class ControlPanel extends JFrame {
 
         autoAuthPanel.setLayout(new FlowLayout());
         autoAuthPanel.add(autoAuthChcBox);
-        autoAuthPanel.add(new JLabel("Авто аутентификация клиентов"));
+        autoAuthPanel.add(new JLabel("Авто аутентификация клиентов (кроме первого)"));
 
         placeComponent(getContentPane(), autoAuthPanel, 4, 2, HORIZONTAL, SOUTH);
     }
@@ -141,19 +141,12 @@ public class ControlPanel extends JFrame {
 
     private synchronized void createClientAction() {
         createClientBtn.setEnabled(false);
-        if (supSevMonitorsChcBox.isEnabled()) {
+        if (supSevMonitorsChcBox != null && supSevMonitorsChcBox.isEnabled()) {
             ClientApp.isSupSevMonitors = getSupSevMonitorsChcBoxStatus();
             supSevMonitorsChcBox.setEnabled(false);
         }
-        if (getAutoAuthChcBoxStatus()) {
-            new Thread(() -> {
-                new ClientApp("localhost", port, openedClientFramesCount != 0, getSupSevMonitorsChcBoxStatus());
-            }).start();
-        } else {
-            new Thread(() -> {
-                new ClientApp("localhost", port, false, getSupSevMonitorsChcBoxStatus());
-            }).start();
-        }
+        new Thread(() -> new ClientApp("localhost", port, getAutoAuthChcBoxStatus() && openedClientFramesCount > 1)).start();
+
         openedClientFramesCount++;
         createClientBtn.setEnabled(true);
     }
@@ -161,7 +154,7 @@ public class ControlPanel extends JFrame {
     public void setComponentsEnabled(boolean isEnabled) {
         createClientBtn.setEnabled(isEnabled);
         autoAuthChcBox.setEnabled(isEnabled);
-        supSevMonitorsChcBox.setEnabled(isEnabled);
+        if (supSevMonitorsChcBox != null) supSevMonitorsChcBox.setEnabled(isEnabled);
         serverPortTField.setEnabled(!isEnabled);
         openServerBtn.setEnabled(!isEnabled);
     }

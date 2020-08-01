@@ -133,7 +133,7 @@ public class Server {
 
     //region Client commands
     private void clientCommandListener(String msg) {
-        if (msg.startsWith("/command")) msg = msg.replace("/command ", "");
+        if (msg.startsWith("//?")) msg = msg.replace("//? ", "");
         var parts = msg.split("\\s");
         var sender = findClientByNickname(parts[0]);
         if (sender == null) {
@@ -141,7 +141,7 @@ public class Server {
             return;
         }
 
-        if (msg.contains("/t")) {
+        if (msg.contains("/t ")) {
             privateMsgClientCommand(sender, parts);
         } else if (msg.contains("/getall")) {
             sender.sendMessage("Nicknames: \n" + getAllNicknames());

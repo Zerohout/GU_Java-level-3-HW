@@ -1,13 +1,13 @@
 package Server;
 
-import Helpers.ChatBase;
+import Helpers.ChatFrameBase;
 import Helpers.ControlPanel;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 
-public class ServerApp extends ChatBase {
+public class ServerApp extends ChatFrameBase {
     private Server server;
     private ControlPanel controlPanel;
     private boolean isWorking = true;

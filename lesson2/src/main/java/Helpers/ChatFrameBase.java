@@ -5,7 +5,7 @@ import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 
-public abstract class ChatBase extends JFrame {
+public abstract class ChatFrameBase extends JFrame {
     protected JTextArea chatArea;
     protected JTextField msgInputField;
 

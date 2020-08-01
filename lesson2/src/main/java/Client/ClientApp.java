@@ -9,12 +9,11 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 
-import Helpers.ChatBase;
+import Helpers.ChatFrameBase;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 
-
-public class ClientApp extends ChatBase {
+public class ClientApp extends ChatFrameBase {
     private static int clientCounter;
     private int frameIndex;
     private Socket socket;
@@ -23,7 +22,7 @@ public class ClientApp extends ChatBase {
     private boolean isWorking = true;
     public static boolean isSupSevMonitors;
 
-    public ClientApp(String host, int port, boolean autoAuth, boolean isSupSevMonitors) {
+    public ClientApp(String host, int port, boolean autoAuth) {
         try {
             this.socket = new Socket(host, port);
             this.in = new DataInputStream(socket.getInputStream());
@@ -74,9 +73,7 @@ public class ClientApp extends ChatBase {
 
     private void commandListener(String msg) throws IOException {
         if (msg.startsWith("//")) {
-            setTitle(msg.replace("//", ""));
-            setVisible(false);
-            setVisible(true);
+            updateTitle(msg);
         } else if (msg.startsWith("/end")) {
             if (socket.isClosed()) {
                 close();
@@ -86,6 +83,12 @@ public class ClientApp extends ChatBase {
         } else {
             out.writeUTF(msg);
         }
+    }
+
+    private void updateTitle(String msg) {
+        setTitle(msg.replace("//", ""));
+        setVisible(false);
+        setVisible(true);
     }
 
     private void doAutoAuth(boolean isAutoAuth) {
