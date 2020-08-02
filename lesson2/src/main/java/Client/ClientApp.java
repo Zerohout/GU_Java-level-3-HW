@@ -9,13 +9,17 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 
+import static Helpers.ChatCommandsHelper.*;
+
 import Helpers.ChatFrameBase;
+import Helpers.DatabaseHelper;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 
 public class ClientApp extends ChatFrameBase {
     private static int clientCounter;
     private int frameIndex;
+    private int port;
     private Socket socket;
     private DataInputStream in;
     private DataOutputStream out;
@@ -24,6 +28,7 @@ public class ClientApp extends ChatFrameBase {
 
     public ClientApp(String host, int port, boolean autoAuth) {
         try {
+            this.port = port;
             this.socket = new Socket(host, port);
             this.in = new DataInputStream(socket.getInputStream());
             this.out = new DataOutputStream(socket.getOutputStream());
@@ -54,6 +59,7 @@ public class ClientApp extends ChatFrameBase {
 
     @Override
     protected synchronized void sendMessage(String msg) {
+        if (msg == null || msg.isEmpty() || msg.isBlank()) return;
         if (msg.startsWith("/")) {
             try {
                 commandListener(msg);
@@ -73,28 +79,40 @@ public class ClientApp extends ChatFrameBase {
 
     private void commandListener(String msg) throws IOException {
         if (msg.startsWith("//")) {
-            updateTitle(msg);
-        } else if (msg.startsWith("/end")) {
+            systemCommandListener(msg);
+        } else if (msg.startsWith(END)) {
             if (socket.isClosed()) {
                 close();
             } else {
-                out.writeUTF("/end");
+                out.writeUTF(END);
             }
         } else {
             out.writeUTF(msg);
         }
     }
 
+    private void systemCommandListener(String msg) {
+        if (msg.startsWith(SYS_TITLE)) {
+            updateTitle(msg);
+        }
+    }
+
     private void updateTitle(String msg) {
-        setTitle(msg.replace("//", ""));
+        setTitle(msg.split("\\s")[1]);
         setVisible(false);
         setVisible(true);
     }
 
     private void doAutoAuth(boolean isAutoAuth) {
         if (!isAutoAuth) return;
-        sendMessage(String.format("/reg client#%1$d 1234 client#%1$d", clientCounter));
-        sendMessage(String.format("/auth client#%d 1234", clientCounter));
+        var login = "client#" + clientCounter;
+        var password = "1234";
+        var nickname = "client#" + clientCounter;
+
+        if (DatabaseHelper.getUser(login, password, port) == null) {
+            sendMessage(String.format(REG + " %s %s %s", login, password, nickname));
+        }
+        sendMessage(String.format(AUTH + " %s %s", login, password));
     }
 
     //endregion
@@ -137,7 +155,7 @@ public class ClientApp extends ChatFrameBase {
             public void windowClosing(WindowEvent e) {
                 FrameLocation.setFrameStatus(frameIndex, false);
                 try {
-                    if (!socket.isClosed()) out.writeUTF("/end");
+                    if (!socket.isClosed()) out.writeUTF(END);
                 } catch (IOException ex) {
                     ex.printStackTrace();
                 }

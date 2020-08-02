@@ -7,6 +7,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 
+import static Helpers.ChatCommandsHelper.*;
+
 public class ServerApp extends ChatFrameBase {
     private Server server;
     private ControlPanel controlPanel;
@@ -20,6 +22,7 @@ public class ServerApp extends ChatFrameBase {
 
     @Override
     protected synchronized void sendMessage(String msg) {
+        if(msg == null || msg.isEmpty() || msg.isBlank()) return;
         server.sendServerMessage(msg);
         msgInputField.setText("");
         msgInputField.grabFocus();
@@ -35,7 +38,6 @@ public class ServerApp extends ChatFrameBase {
         setTitle("Сервер");
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout());
-
         setWindowSize();
         addComponents();
         setVisible(true);
@@ -54,7 +56,6 @@ public class ServerApp extends ChatFrameBase {
         this.msgInputField = new JTextField();
         addChatArea(this, chatArea);
         addBottomPanel(this);
-
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -62,7 +63,7 @@ public class ServerApp extends ChatFrameBase {
                 isWorking = false;
                 super.windowClosing(e);
                 controlPanel.setComponentsEnabled(false);
-                sendMessage("/end");
+                sendMessage(END);
             }
         });
     }

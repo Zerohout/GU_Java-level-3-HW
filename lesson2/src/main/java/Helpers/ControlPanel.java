@@ -5,7 +5,10 @@ import Server.ServerApp;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
+import static Helpers.ChatCommandsHelper.END;
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 import static java.awt.GridBagConstraints.*;
 
@@ -22,6 +25,7 @@ public class ControlPanel extends JFrame {
 
     public ControlPanel() {
         prepareGUI();
+        DatabaseHelper.connect();
     }
 
     private boolean getAutoAuthChcBoxStatus() {
@@ -59,6 +63,13 @@ public class ControlPanel extends JFrame {
         addServerComponents();
         addClientComponents();
         setComponentsEnabled(false);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                DatabaseHelper.disconnect();
+                super.windowClosing(e);
+            }
+        });
     }
 
     //region Adding server components

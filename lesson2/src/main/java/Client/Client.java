@@ -1,11 +1,14 @@
 package Client;
 
+import AuthService.AuthService;
 import Server.Server;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+
+import static Helpers.ChatCommandsHelper.*;
 
 public class Client {
     private Server server;
@@ -15,6 +18,10 @@ public class Client {
     private String name;
     private boolean isOnline = true;
     private boolean isAuth;
+
+    public boolean isOnline() {
+        return isOnline;
+    }
 
     public Client(Server server, Socket socket) {
         try {
@@ -36,6 +43,7 @@ public class Client {
     public boolean isAuth() {
         return isAuth;
     }
+    public void isAuth(boolean isAuth) {this.isAuth = isAuth;}
 
     private void readMessage() {
         while (isOnline) {
@@ -51,6 +59,9 @@ public class Client {
             if (msg.startsWith("/")) {
                 commandListener(msg);
             } else {
+                if (!isAuth) {
+                    server.getAuthService().clientAuthentication(msg, this);
+                }
                 server.broadcastMessage(String.format("%s: %s", name, msg));
             }
         }
@@ -68,31 +79,32 @@ public class Client {
             if (out == null) close();
             else out.writeUTF(msg);
         } catch (IOException e) {
-            e.printStackTrace();
+           // e.printStackTrace();
         }
     }
 
-
     private synchronized void commandListener(String msg) {
-        if (msg.startsWith("/end")) {
+        if (msg.startsWith(END)) {
             close();
-        } else if (msg.startsWith("/authok")) {
+        } else if (msg.startsWith(AUTH_OK)) {
             authokCommand(msg);
         } else if (!isAuth) {
-            server.clientAuthentication(this, msg);
+            server.getAuthService().clientAuthentication(msg,this);
         } else {
-            msg = String.format("//? %s %s", name, msg);
+            msg = String.format("%s %s", name, msg);
             server.broadcastMessage(msg);
         }
     }
 
     private void authokCommand(String msg) {
-        isAuth = true;
-        msg = msg.replace("/authok ", "");
-        name = msg;
+        changeTitle(msg.split("\\s")[1]);
         server.subscribe(this);
+    }
+
+    public void changeTitle(String name){
         try {
-            out.writeUTF("//" + name);
+            this.name = name;
+            out.writeUTF(String.format("%s %s", SYS_TITLE, name));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -103,15 +115,15 @@ public class Client {
         if (isAuth) server.unsubscribe(this);
         else server.sendLocalMessage(socket.toString() + " disconnected");
         try {
-            if (!socket.isClosed()) out.writeUTF("/end");
+            if (!socket.isClosed()) out.writeUTF(END);
         } catch (IOException e) {
             e.printStackTrace();
-        }finally {
+        } finally {
             closeConnection();
         }
     }
 
-    private void closeConnection(){
+    private void closeConnection() {
         try {
             in.close();
             out.close();

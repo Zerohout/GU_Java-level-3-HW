@@ -4,6 +4,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public abstract class ChatFrameBase extends JFrame {
     protected JTextArea chatArea;
@@ -42,12 +44,18 @@ public abstract class ChatFrameBase extends JFrame {
     }
     //endregion
 
+    protected String getCurrentDate(){
+        var dateFormat = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
+        return dateFormat.format(new Date());
+    }
+
     protected abstract void sendMessage(String msg);
 
     public void sendLocalMessage(String msg) {
         if (chatArea == null) {
             return;
         }
+        msg = String.format("%s %s",getCurrentDate(),msg);
         chatArea.append(msg);
         chatArea.append("\n");
     }
