@@ -1,6 +1,6 @@
 package Helpers;
 
-import AuthService.User;
+import Entities.User;
 
 public class DatabaseSQLRequests {
     static final String USERS_TABLE = "users";
@@ -42,7 +42,7 @@ public class DatabaseSQLRequests {
                 USERS_TABLE, login, password, serverPort);
     }
 
-    public static String getSelectAllUsersOnServerRequest(int serverPort){
-        return String.format("SELECT * FROM users WHERE serverPort = %d;",serverPort);
+    public static String getSelectAllUsersOnServerRequest(int serverPort) {
+        return String.format("SELECT * FROM %s WHERE serverPort = %d;", USERS_TABLE, serverPort);
     }
 }
