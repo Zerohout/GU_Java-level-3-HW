@@ -10,129 +10,109 @@ import java.io.IOException;
 import java.net.Socket;
 
 import static Helpers.ChatCommandsHelper.*;
+import static Services.MessageService.*;
 
 import Helpers.ChatFrameBase;
 import Helpers.DatabaseHelper;
+import Entities.Message;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 
 public class ClientApp extends ChatFrameBase {
     private static int clientCounter;
-    private int frameIndex;
-    private int port;
-    private Socket socket;
-    private DataInputStream in;
-    private DataOutputStream out;
-    private boolean isWorking = true;
     public static boolean isSupSevMonitors;
+    private int frameIndex;
+    private boolean isStopped;
+    private DataOutputStream out;
+    private DataInputStream in;
+    private Socket socket;
+    private Message msg;
 
     public ClientApp(String host, int port, boolean autoAuth) {
         try {
-            this.port = port;
             this.socket = new Socket(host, port);
-            this.in = new DataInputStream(socket.getInputStream());
-            this.out = new DataOutputStream(socket.getOutputStream());
+            out = new DataOutputStream(socket.getOutputStream());
+            in = new DataInputStream(socket.getInputStream());
             clientCounter++;
             prepareGUI(socket);
             new Thread(this::readMessage).start();
-            doAutoAuth(autoAuth);
+            doAutoAuth(autoAuth, port);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    //region Text methods
     private void readMessage() {
-        while (isWorking) {
-            String msg;
+        while (!socket.isClosed()) {
             try {
-                msg = in.readUTF();
-                if (msg.startsWith("/")) commandListener(msg);
-                else sendLocalMessage(msg);
-            } catch (IOException e) {
-                //e.printStackTrace();
-                close();
+                var text = in.readUTF();
+                msg = createMessage(text,null);
+                if (msg.isCommand()) {
+                    executeCommand();
+                    continue;
+                }
+                sendLocalMessage(msg.getConnectedText());
+            } catch (IOException ex) {
+                ex.printStackTrace();
                 return;
             }
         }
     }
 
     @Override
-    protected synchronized void sendMessage(String msg) {
-        if (msg == null || msg.isEmpty() || msg.isBlank()) return;
-        if (msg.startsWith("/")) {
-            try {
-                commandListener(msg);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        } else {
-            try {
-                out.writeUTF(msg);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        msgInputField.setText("");
-        msgInputField.grabFocus();
-    }
-
-    private void commandListener(String msg) throws IOException {
-        if (msg.startsWith("//")) {
-            systemCommandListener(msg);
-        } else if (msg.startsWith(END)) {
-            if (socket.isClosed()) {
-                close();
-            } else {
-                out.writeUTF(END);
-            }
-        } else {
-            out.writeUTF(msg);
+    protected synchronized void sendMessage(String text) {
+        if (text == null || text.isBlank() || text.isEmpty()) return;
+        msg = createMessage(connectWords(getTitle(), text),null);
+        try {
+            out.writeUTF(msg.getConnectedText());
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            this.dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
+        } finally {
+            msgInputField.setText("");
+            msgInputField.grabFocus();
         }
     }
 
-    private void systemCommandListener(String msg) {
-        if (msg.startsWith(SYS_TITLE)) {
-            updateTitle(msg);
+    private void executeCommand() throws IOException {
+        switch (msg.getCommand()) {
+            case END:
+                isStopped = true;
+                socket.close();
+                this.dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
+                break;
+            case AUTH_OK:
+            case RENAME:
+                updateTitle(msg.getText());
+                break;
+            default:
+                break;
         }
     }
 
-    private void updateTitle(String msg) {
-        setTitle(msg.split("\\s")[1]);
-        setVisible(false);
-        setVisible(true);
-    }
-
-    private void doAutoAuth(boolean isAutoAuth) {
+    private void doAutoAuth(boolean isAutoAuth, int port) {
         if (!isAutoAuth) return;
         var login = "client#" + clientCounter;
         var password = "1234";
         var nickname = "client#" + clientCounter;
 
         if (DatabaseHelper.getUser(login, password, port) == null) {
-            sendMessage(String.format(REG + " %s %s %s", login, password, nickname));
+            msg = createMessage(connectWords(getTitle(), REG, login, password, nickname),null);
+            sendMessage(msg.getConnectedText());
         }
-        sendMessage(String.format(AUTH + " %s %s", login, password));
-    }
-
-    //endregion
-
-    private void close() {
-        isWorking = false;
-        try {
-            in.close();
-            out.close();
-            if (!socket.isClosed()) socket.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            this.dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
-        }
+        msg = createMessage(connectWords(getTitle(), AUTH, login, password),null);
+        sendMessage(msg.getConnectedText());
     }
 
     //region GUI methods
+    private void updateTitle(String title) {
+        setVisible(false);
+        setTitle(title);
+        setVisible(true);
+    }
+
     private synchronized void prepareGUI(Socket socket) {
-        setTitle("Клиент " + socket.toString());
+        setTitle(socket.toString());
         setLayout(new BorderLayout());
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
@@ -154,10 +134,9 @@ public class ClientApp extends ChatFrameBase {
             @Override
             public void windowClosing(WindowEvent e) {
                 FrameLocation.setFrameStatus(frameIndex, false);
-                try {
-                    if (!socket.isClosed()) out.writeUTF(END);
-                } catch (IOException ex) {
-                    ex.printStackTrace();
+                if (!isStopped) {
+                    isStopped = true;
+                    sendMessage("/end");
                 }
             }
         });
@@ -186,13 +165,13 @@ public class ClientApp extends ChatFrameBase {
         }
 
         //region public getters and setters
-        public static Dimension getFrameSize() {
+        static Dimension getFrameSize() {
             return isSupSevMonitors ?
                     new Dimension(getScreenSize().width / 4 - 25, getScreenSize().height / 2 - 50)
                     : new Dimension(getScreenSize().width / 3, getScreenSize().height / 2);
         }
 
-        public static int getFrameIndex() {
+        static int getFrameIndex() {
             if (isSupSevMonitors) {
                 for (var i = 0; i < frameLocations.length; i++) {
                     if (frameLocations[i].isClose()) return i;
@@ -201,13 +180,13 @@ public class ClientApp extends ChatFrameBase {
             return 0;
         }
 
-        public static Point getFrameLocation() {
+        static Point getFrameLocation() {
             var index = getFrameIndex();
             setFrameStatus(index, true);
             return frameLocations[index].getLocation();
         }
 
-        public static void setFrameStatus(int frameIndex, boolean isOpen) {
+        static void setFrameStatus(int frameIndex, boolean isOpen) {
             if (frameIndex == 0 || frameIndex > 8) {
                 if (isOpen) {
                     openedDefaultFramesCount++;

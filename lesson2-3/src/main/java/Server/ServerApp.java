@@ -8,28 +8,29 @@ import java.awt.*;
 import java.awt.event.*;
 
 import static Helpers.ChatCommandsHelper.*;
+import static Services.MessageService.*;
 
 public class ServerApp extends ChatFrameBase {
-    private Server server;
+    private ServerHandler server;
     private ControlPanel controlPanel;
-    private boolean isWorking = true;
+    private boolean isStopped;
 
     public ServerApp(ControlPanel controlPanel, int port) {
         this.controlPanel = controlPanel;
         prepareGUI();
-        server = new Server(port, this);
+        server = new ServerHandler(port, this);
     }
 
     @Override
-    protected synchronized void sendMessage(String msg) {
-        if(msg == null || msg.isEmpty() || msg.isBlank()) return;
-        server.sendServerMessage(msg);
+    protected synchronized void sendMessage(String text) {
+        if (text == null || text.isEmpty() || text.isBlank()) return;
+        var msg = createMessage(connectWords(ServerHandler.SERVER_NAME, text),server);
+        server.sendMessage(msg);
         msgInputField.setText("");
         msgInputField.grabFocus();
     }
 
     public void close() {
-        isWorking = false;
         this.dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
     }
 
@@ -59,17 +60,13 @@ public class ServerApp extends ChatFrameBase {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                controlPanel.setSupSevMonitorsChcBoxEnabled(true);
-                isWorking = false;
-                super.windowClosing(e);
                 controlPanel.setComponentsEnabled(false);
-                sendMessage(END);
+                if(!isStopped){
+                    isStopped = true;
+                sendMessage(END);}
+                super.windowClosing(e);
             }
         });
-    }
-
-    public boolean isWorking() {
-        return isWorking;
     }
     //endregion
 }
