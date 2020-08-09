@@ -96,6 +96,7 @@ public class ClientHandler implements Serializable, Sendable {
 
     public void updateUser() {
         this.user = DatabaseHelper.getUser(user.getId());
+        DatabaseHelper.closeConnection();
     }
 
     //region Getters and Setters

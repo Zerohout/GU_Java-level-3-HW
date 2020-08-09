@@ -12,6 +12,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 
+import static Database.DatabaseHelper.*;
 import static Helpers.ChatCommandsHelper.*;
 import static Message.MessageBuilder.*;
 
@@ -114,7 +115,7 @@ public class ServerHandler implements Sendable {
             commandHandler.serverCommandListener(msg);
             return;
         }
-        broadcastMessage(msg,false);
+        broadcastMessage(msg, false);
     }
 
     @Override
@@ -127,7 +128,7 @@ public class ServerHandler implements Sendable {
     public synchronized void subscribe(ClientHandler client) {
         notAuthClients.remove(client);
         onlineClients.add(client);
-        broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "come in chat.")).build(),true);
+        broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "come in chat.")).build(), true);
     }
 
     public synchronized void unsubscribe(ClientHandler client) {
@@ -135,7 +136,7 @@ public class ServerHandler implements Sendable {
         onlineClients.remove(client);
         client.isAuth(false);
         addNotAuthClient(client);
-        broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "left the chat.")).build(),true);
+        broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "left the chat.")).build(), true);
     }
 
     private void addNotAuthClient(ClientHandler client) {
@@ -144,17 +145,15 @@ public class ServerHandler implements Sendable {
     }
 
     private void closeClients() {
-        var users = DatabaseHelper.getAllUsers();
+        var users = DatabaseHelper.getOnlineUsers();
         if (users == null) throw new RuntimeException("users is null");
         for (var i = 0; i < users.size(); i++) {
-            if (users.get(i).isOnline()) {
-                DatabaseHelper.updateUserIsOnlineStatus(users.get(i).getNickname(), false);
-                var client = getClientByNickname(users.get(i).getNickname());
-                if (client != null) {
-                    unsubscribe(client);
-                }
+            var client = getClientByNickname(users.get(i).getNickname());
+            if (client != null) {
+                unsubscribe(client);
             }
         }
+        setUsersStatusToOffline();
         mb = mb.reset().compositeMessage(END);
         mb.setRecipients(new ArrayList<>(notAuthClients)).build().send();
         mb.setRecipients(new ArrayList<>(onlineClients)).build().send();

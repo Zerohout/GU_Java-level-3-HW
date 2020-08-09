@@ -7,6 +7,8 @@ import Server.ServerHandler;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 import static java.awt.GridBagConstraints.*;
@@ -18,6 +20,7 @@ public class ControlPanel extends JFrame {
     private JButton createClientBtn;
     private JButton openServerBtn;
     private JTextField serverPortTField;
+    private ServerApp server;
 
     private int openedClientFramesCount;
     private int port;
@@ -67,6 +70,13 @@ public class ControlPanel extends JFrame {
         addServerComponents();
         addClientComponents();
         setComponentsEnabled(false);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                if(server != null) server.close();
+                super.windowClosing(e);
+            }
+        });
     }
 
     //region Adding server components
@@ -142,7 +152,7 @@ public class ControlPanel extends JFrame {
             return;
         }
         new Thread(() -> {
-            new ServerApp(this, port);
+            server = new ServerApp(this, port);
             setComponentsEnabled(true);
         }).start();
     }
