@@ -1,7 +1,9 @@
 package Helpers;
 
 import Client.ClientApp;
+import Database.DatabaseHelper;
 import Server.ServerApp;
+import Server.ServerHandler;
 
 import javax.swing.*;
 import java.awt.*;
@@ -10,6 +12,7 @@ import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 import static java.awt.GridBagConstraints.*;
 
 public class ControlPanel extends JFrame {
+    private static ServerHandler currentServer;
     private JCheckBox autoAuthChcBox;
     private JCheckBox supSevMonitorsChcBox;
     private JButton createClientBtn;
@@ -23,6 +26,14 @@ public class ControlPanel extends JFrame {
     public ControlPanel() {
         prepareGUI();
         DatabaseHelper.createUsersTable();
+    }
+
+    public static ServerHandler getCurrentServer() {
+        return currentServer;
+    }
+
+    public static void setCurrentServer(ServerHandler currentServer) {
+        ControlPanel.currentServer = currentServer;
     }
 
     private boolean getAutoAuthChcBoxStatus() {

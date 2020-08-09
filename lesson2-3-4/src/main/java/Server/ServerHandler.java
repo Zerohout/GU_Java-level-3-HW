@@ -2,55 +2,65 @@ package Server;
 
 import Client.ClientHandler;
 import AuthService.AuthService;
+import Database.DatabaseHelper;
+import Helpers.Sendable;
 import Message.Message;
-import Message.MessageService;
+import Message.MessageBuilder;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 
 import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
+import static Message.MessageBuilder.*;
 
-public class ServerHandler {
+public class ServerHandler implements Sendable {
     private final int port;
     private ServerSocket serverSocket;
     private ServerApp serverApp;
     private AuthService authService;
-    private HashSet<ClientHandler> onlineClients;
     private HashSet<ClientHandler> notAuthClients;
+    private static HashSet<ClientHandler> onlineClients = new HashSet<>();
     private ServerCommandHandler commandHandler;
     public final static String SERVER_NAME = "SERVER";
     private boolean isStopped;
-    private ArrayList<Message> messages;
+    private MessageBuilder mb;
 
     //region Getters
-    public int getPort() {
-        return port;
-    }
-
     public AuthService getAuthService() {
         return this.authService;
     }
 
-    public HashSet<ClientHandler> getOnlineClients() {
-        return onlineClients;
+    @Override
+    public String getName() {
+        return SERVER_NAME;
     }
 
-    public ClientHandler getClientByNickname(String nickname) {
+//    public HashSet<ClientHandler> getOnlineClients() {
+//        return onlineClients;
+//    }
+
+    public static ClientHandler getClientByNickname(String nickname) {
         for (var client : onlineClients) {
-            if (client.getNickname().equals(nickname)) return client;
+            if (client.isNicknameCorrect(nickname)) return client;
         }
         return null;
+    }
+
+    public ArrayList<String> getNicknames() {
+        var out = new ArrayList<String>();
+        for (var client : onlineClients) {
+            out.add(client.getName());
+        }
+        return out;
     }
 
     //endregion
 
     public ServerHandler(int port, ServerApp serverApp) {
+        this.mb = new MessageBuilder();
         this.port = port;
-        this.onlineClients = new HashSet<>();
         this.notAuthClients = new HashSet<>();
         this.serverApp = serverApp;
         new Thread(this::start).start();
@@ -59,12 +69,10 @@ public class ServerHandler {
     private void start() {
         try (ServerSocket server = new ServerSocket(this.port)) {
             this.serverSocket = server;
-            authService = new AuthService(this);
+            authService = new AuthService();
+            authService.start();
             commandHandler = new ServerCommandHandler(this);
             serverApp.sendLocalMessage("Server started on port: " + port);
-            createServerMessagesFile();
-            this.messages = new ArrayList<>(MessageService.getMessagesFromFile(port));
-            showLastMessages();
             while (!server.isClosed() && !isStopped) {
                 Socket socket = server.accept();
                 serverApp.sendLocalMessage(String.format("Client connected on %s", socket.toString()));
@@ -82,7 +90,7 @@ public class ServerHandler {
     }
 
     public void stopServer() {
-        MessageService.addMessagesToFile(messages, port);
+        authService.stop();
         isStopped = true;
         closeClients();
         serverApp.close();
@@ -93,83 +101,25 @@ public class ServerHandler {
         }
     }
 
-    //region Messages
-    private void createServerMessagesFile() {
-        try {
-            new File("./messages/messages_" + port + ".msg").createNewFile();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void addRecoveryMessage(Message msg){
-        this.messages.add(msg);
-    }
-
-    private void showLastMessages(){
-        if(messages == null || messages.size() == 0) return;
-        var size = messages.size();
-        var startIndex = size <= 100 ? 0 : size - 100;
-        for (var i = startIndex; i < size; i++){
-            sendLocalMessage(messages.get(i).getConnectedText());
-        }
-    }
-
-    private void loadClientMessages(ClientHandler client) {
-        if (this.messages == null) return;
-        var size = messages.size();
-        if (size == 0) return;
-        var clientMessages = new ArrayList<Message>();
-        for (int i = 0; i < size; i++) {
-            var msg = messages.get(i);
-            if (isContains(msg, client)) {
-                clientMessages.add(msg);
-            }
-        }
-        size = clientMessages.size();
-        var startIndex = size <= 100 ? 0 : size - 100;
-        for(var i = startIndex; i < size; i++){
-            client.sendLocalMessage(clientMessages.get(i));
-        }
-    }
-
-    private static boolean isContains(Message msg, ClientHandler client) {
-        for (var i = 0; i < msg.getRecipients().size(); i++) {
-            if (msg.getRecipients().get(i).getNickname().equals(client.getNickname())) {
-                return true;
-            }
-        }
-        return false;
-    }
-    //endregion
-
     //region sending messages
-    public synchronized void broadcastMessage(Message msg) {
-        if (msg.isCommand()) {
-            return;
-        }
-        msg.addRecipients(new ArrayList<>(onlineClients));
-        msg.send();
-        sendLocalMessage(msg.getConnectedText());
+    public synchronized void broadcastMessage(Message msg, boolean isSystem) {
+        mb.convertMsgToBuilder(msg).isSystem(isSystem)
+                .setRecipients(new ArrayList<>(onlineClients))
+                .addRecipients(this).build().sendLocal();
     }
 
+    @Override
     public void sendMessage(Message msg) {
         if (msg.isCommand()) {
             commandHandler.serverCommandListener(msg);
             return;
         }
-        broadcastMessage(msg);
+        broadcastMessage(msg,false);
     }
 
-    synchronized void sendPrivateServerMsg(ClientHandler recipient, String text, boolean isMsgWatcherEnabled) {
-        var msg = MessageService.createPrivateMessage(text, null, recipient,this);
-        msg.send();
-        if (!isMsgWatcherEnabled) return;
-        sendLocalMessage(msg.getConnectedText());
-    }
-
-    public void sendLocalMessage(String text) {
-        serverApp.sendLocalMessage(text);
+    @Override
+    public void sendLocalMessage(Message msg) {
+        serverApp.sendLocalMessage(msg.getConnectedText());
     }
     //endregion
 
@@ -177,16 +127,15 @@ public class ServerHandler {
     public synchronized void subscribe(ClientHandler client) {
         notAuthClients.remove(client);
         onlineClients.add(client);
-        loadClientMessages(client);
-        client.isAuth(true);
-        broadcastMessage(createMessage(connectWords(SERVER_NAME, client.getNickname(), "come in chat"),this));
+        broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "come in chat.")).build(),true);
     }
 
     public synchronized void unsubscribe(ClientHandler client) {
+        DatabaseHelper.updateUserIsOnlineStatus(client.getName(), false);
         onlineClients.remove(client);
         client.isAuth(false);
         addNotAuthClient(client);
-        broadcastMessage(createMessage(connectWords(SERVER_NAME, client.getNickname(), "left the chat"),this));
+        broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "left the chat.")).build(),true);
     }
 
     private void addNotAuthClient(ClientHandler client) {
@@ -195,19 +144,31 @@ public class ServerHandler {
     }
 
     private void closeClients() {
-        var msg = createMessage(connectWords(SERVER_NAME, END),this);
-        msg.addRecipients(new ArrayList<>(notAuthClients));
-        msg.addRecipients(new ArrayList<>(onlineClients));
-        msg.send();
+        var users = DatabaseHelper.getAllUsers();
+        if (users == null) throw new RuntimeException("users is null");
+        for (var i = 0; i < users.size(); i++) {
+            if (users.get(i).isOnline()) {
+                DatabaseHelper.updateUserIsOnlineStatus(users.get(i).getNickname(), false);
+                var client = getClientByNickname(users.get(i).getNickname());
+                if (client != null) {
+                    unsubscribe(client);
+                }
+            }
+        }
+        mb = mb.reset().compositeMessage(END);
+        mb.setRecipients(new ArrayList<>(notAuthClients)).build().send();
+        mb.setRecipients(new ArrayList<>(onlineClients)).build().send();
     }
 
     public void closeClient(ClientHandler client) throws IOException {
+        DatabaseHelper.updateUserIsOnlineStatus(client.getName(), false);
         onlineClients.remove(client);
         notAuthClients.remove(client);
         if (client.isAuth()) {
-            broadcastMessage(createMessage(connectWords(SERVER_NAME, client.getNickname(), "left the chat"),this));
+            unsubscribe(client);
         } else {
-            sendLocalMessage(connectWords(SERVER_NAME, client.getNickname(), "disconnected"));
+            mb.reset().setServerSystemMessage(connectWords(client.getName(), "disconnected"))
+                    .setRecipients(this).build().send();
         }
         client.closeClientHandler();
     }

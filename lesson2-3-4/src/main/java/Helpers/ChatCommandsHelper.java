@@ -31,6 +31,8 @@ public class ChatCommandsHelper {
         return out;
     }
 
+
+
     public static ArrayList<String> getAllServerCommands() {
         var out = new ArrayList<String>();
         out.add(DELETE);
@@ -44,7 +46,7 @@ public class ChatCommandsHelper {
             case LOGOUT -> String.format("\"%s\" for logout from chat.", LOGOUT);
             case PRIVATE_MSG -> String.format("\"%s recipient_nickname\" for sending private message to recipient.", PRIVATE_MSG);
             case GET_ONLINE -> String.format("\"%s\" for getting list of all online users.", GET_ONLINE);
-            case RENAME -> String.format("\"%s new_nickname\" for renaming your nickname.", RENAME);
+            case RENAME -> String.format("\"%s login password new_nickname\" for renaming your nickname.", RENAME);
             case END -> String.format("\"%s\" for exiting from chat.", END);
             case DELETE -> String.format("\"%s nickname\" for deleting user from DB and close his client application", DELETE);
             case GET_COMMS -> String.format("\"%s\" for getting full list of available commands", GET_COMMS);
@@ -57,7 +59,7 @@ public class ChatCommandsHelper {
     public static ArrayList<String> getNicknames(ArrayList<ClientHandler> clients){
         var out = new ArrayList<String>();
         for(var client : clients){
-            out.add(client.getNickname());
+            out.add(client.getName());
         }
         return out;
     }

@@ -2,13 +2,15 @@ package Server;
 
 import Helpers.ChatFrameBase;
 import Helpers.ControlPanel;
+import Message.MessageBuilder;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
-import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
+import static Helpers.ChatCommandsHelper.END;
+import static Message.MessageBuilder.*;
 
 public class ServerApp extends ChatFrameBase {
     private ServerHandler server;
@@ -19,13 +21,13 @@ public class ServerApp extends ChatFrameBase {
         this.controlPanel = controlPanel;
         prepareGUI();
         server = new ServerHandler(port, this);
+        ControlPanel.setCurrentServer(server);
     }
 
     @Override
     protected synchronized void sendMessage(String text) {
         if (text == null || text.isEmpty() || text.isBlank()) return;
-        var msg = createMessage(connectWords(ServerHandler.SERVER_NAME, text),server);
-        server.sendMessage(msg);
+        new MessageBuilder().compositeMessage(connectWords(ServerHandler.SERVER_NAME, text)).setRecipients(server).build().send();
         msgInputField.setText("");
         msgInputField.grabFocus();
     }

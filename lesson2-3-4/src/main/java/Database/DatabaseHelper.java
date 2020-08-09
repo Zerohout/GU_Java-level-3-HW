@@ -1,11 +1,11 @@
-package Helpers;
+package Database;
 
 import AuthService.User;
 
 import java.sql.*;
 import java.util.ArrayList;
 
-import static Helpers.DatabaseSQLRequests.*;
+import static Database.DatabaseSQLRequests.*;
 
 public class DatabaseHelper {
     static {
@@ -40,18 +40,26 @@ public class DatabaseHelper {
         return executeUpdate(getInsertUserRequest(user));
     }
 
-    public static boolean updateUserNickname(String userNickname, String userNewNickname, int serverPort) {
-        return executeUpdate(getUpdateUserRequest(userNickname, userNewNickname, serverPort));
+    public static boolean updateUserNickname(String userNickname, String userNewNickname) {
+        return executeUpdate(getUpdateUserRequest(userNickname, userNewNickname));
     }
 
-    public static boolean deleteUser(String userNickname, int serverPort) {
-        return executeUpdate(getDeleteUserRequest(userNickname, serverPort));
+    public static boolean updateUserNickname(String login, String password, String userNewNickname) {
+        return executeUpdate(getUpdateUserRequest(login, password, userNewNickname));
     }
 
-    public static User getUser(String login, String password, int serverPort) {
+    public static boolean updateUserIsOnlineStatus(String userNickname, boolean isOnline) {
+        return executeUpdate(getUpdateUserRequest(userNickname, isOnline));
+    }
+
+    public static boolean deleteUser(String userNickname) {
+        return executeUpdate(getDeleteUserRequest(userNickname));
+    }
+
+    public static User getUser(String login, String password) {
         try {
             if (connection == null || connection.isClosed()) openConnection();
-            var result = executeQuery(getSelectUserRequest(login, password, serverPort));
+            var result = executeQuery(getSelectUserRequest(login, password));
             if (result == null) return null;
             var out = getUser(result.getInt("id"));
             if (connection != null || !connection.isClosed()) closeConnection();
@@ -62,10 +70,10 @@ public class DatabaseHelper {
         }
     }
 
-    public static boolean isNicknameFree(String nickname, int serverPort) {
-        var users = DatabaseHelper.getAllUsers(serverPort);
+    public static boolean isNicknameFree(String nickname) {
+        var users = DatabaseHelper.getAllUsers();
         for (var user : users) {
-            if (user.getNickname().equals(nickname) && !user.isOnline()) return false;
+            if (user.isNicknameCorrect(nickname) && !user.isOnline()) return false;
         }
         return true;
     }
@@ -75,7 +83,7 @@ public class DatabaseHelper {
             if (connection == null || connection.isClosed()) openConnection();
             var result = executeQuery(getSelectUserRequest(userId));
             if (result == null) return null;
-            var out = new User(result.getString("login"), result.getString("password"), result.getString("nickname"), result.getInt("serverPort"));
+            var out = new User(result.getString("login"), result.getString("password"), result.getString("nickname"), result.getBoolean("isOnline"));
             out.setId(result.getInt("id"));
             if (connection != null || !connection.isClosed()) closeConnection();
             return out;
@@ -85,12 +93,12 @@ public class DatabaseHelper {
         }
     }
 
-    public static ArrayList<User> getAllUsers(int serverPort) {
+    public static ArrayList<User> getAllUsers() {
         try {
             if (connection == null || connection.isClosed()) openConnection();
             var out = new ArrayList<User>();
             var idList = new ArrayList<Integer>();
-            var result = executeQuery(getSelectAllUsersOnServerRequest(serverPort));
+            var result = executeQuery(SELECT_ALL_USERS);
             if (result == null) return null;
             while (result.next()) {
                 idList.add(result.getInt("id"));
