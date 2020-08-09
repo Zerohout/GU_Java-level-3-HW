@@ -10,11 +10,11 @@ import java.io.IOException;
 import java.net.Socket;
 
 import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
+import static Message.MessageBuilder.*;
 
 import Helpers.ChatFrameBase;
-import Helpers.DatabaseHelper;
-import Message.Message;
+import Database.DatabaseHelper;
+import Message.MessageBuilder;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 
@@ -26,7 +26,6 @@ public class ClientApp extends ChatFrameBase {
     private DataOutputStream out;
     private DataInputStream in;
     private Socket socket;
-    private Message msg;
 
     public ClientApp(String host, int port, boolean autoAuth) {
         try {
@@ -36,7 +35,7 @@ public class ClientApp extends ChatFrameBase {
             clientCounter++;
             prepareGUI(socket);
             new Thread(this::readMessage).start();
-            doAutoAuth(autoAuth, port);
+            doAutoAuth(autoAuth);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -46,12 +45,13 @@ public class ClientApp extends ChatFrameBase {
         while (!socket.isClosed()) {
             try {
                 var text = in.readUTF();
-                msg = createMessage(text,null);
-                if (msg.isCommand()) {
-                    executeCommand();
+                var parts = text.split("\\s");
+
+                if (parts[1].startsWith("/")) {
+                    executeCommand(parts);
                     continue;
                 }
-                sendLocalMessage(msg.getConnectedText());
+                sendLocalMessage(text);
             } catch (IOException ex) {
                 ex.printStackTrace();
                 return;
@@ -62,9 +62,11 @@ public class ClientApp extends ChatFrameBase {
     @Override
     protected synchronized void sendMessage(String text) {
         if (text == null || text.isBlank() || text.isEmpty()) return;
-        msg = createMessage(connectWords(getTitle(), text),null);
         try {
-            out.writeUTF(msg.getConnectedText());
+            if (!text.split("\\s")[0].equals(getTitle())) {
+                text = String.format("%s %s", getTitle(), text);
+            }
+            out.writeUTF(text);
         } catch (IOException ex) {
             ex.printStackTrace();
             this.dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
@@ -74,8 +76,8 @@ public class ClientApp extends ChatFrameBase {
         }
     }
 
-    private void executeCommand() throws IOException {
-        switch (msg.getCommand()) {
+    private void executeCommand(String[] parts) throws IOException {
+        switch (parts[1]) {
             case END:
                 isStopped = true;
                 socket.close();
@@ -83,25 +85,26 @@ public class ClientApp extends ChatFrameBase {
                 break;
             case AUTH_OK:
             case RENAME:
-                updateTitle(msg.getText());
+                updateTitle(parts[2]);
                 break;
             default:
                 break;
         }
     }
 
-    private void doAutoAuth(boolean isAutoAuth, int port) {
-        if (!isAutoAuth) return;
-        var login = "client#" + clientCounter;
-        var password = "1234";
-        var nickname = "client#" + clientCounter;
+    // For debugging
+    private void doAutoAuth(boolean isAutoAuth) {
+        if (!isAutoAuth || clientCounter == 1) return;
+        var login = "login" + clientCounter;
+        var password = "pass" + clientCounter;
+        var nickname = "Client" + clientCounter;
 
-        if (DatabaseHelper.getUser(login, password, port) == null) {
-            msg = createMessage(connectWords(getTitle(), REG, login, password, nickname),null);
-            sendMessage(msg.getConnectedText());
+        var builder = new MessageBuilder();
+
+        if (DatabaseHelper.getUser(login, password) == null) {
+            sendMessage(builder.compositeMessage(connectWords(getTitle(), REG, login, password, nickname)).build().getConnectedText());
         }
-        msg = createMessage(connectWords(getTitle(), AUTH, login, password),null);
-        sendMessage(msg.getConnectedText());
+        sendMessage(builder.compositeMessage(connectWords(getTitle(), AUTH, login, password)).build().getConnectedText());
     }
 
     //region GUI methods

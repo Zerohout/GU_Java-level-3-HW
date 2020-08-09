@@ -1,113 +1,106 @@
 package Server;
 
-import Helpers.ChatCommandsHelper;
-import Helpers.DatabaseHelper;
+import Database.DatabaseHelper;
 import Message.Message;
-
-import java.util.ArrayList;
+import Message.MessageBuilder;
 
 import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
+import static Message.MessageBuilder.*;
+import static Server.ServerHandler.SERVER_NAME;
+import static Server.ServerHandler.getClientByNickname;
 
 public class ServerCommandHandler {
-
     private ServerHandler server;
+    private MessageBuilder mb;
 
     public ServerCommandHandler(ServerHandler server) {
+        mb = new MessageBuilder();
         this.server = server;
     }
 
     synchronized void serverCommandListener(Message msg) {
-        var command = msg.getCommand();
-        if (command == null) return;
-        var parts = msg.getParts();
-
-        switch (command) {
-            case HELP -> server.sendLocalMessage(getCommandHelp(parts.length == 2 ? msg.getCommand() : msg.getText()));
+        switch (msg.getCommand()) {
+            case HELP -> executeHelpCommand(msg);
             case GET_COMMS -> executeGetCommsCommand();
-            case AUTH, REG -> server.sendLocalMessage("You don't need this commands");
-            case LOGOUT -> executeLogoutCommand(msg);
+            case AUTH, REG, LOGOUT, RENAME -> executeUnneededCommands();
             case PRIVATE_MSG -> executePrivateMsgCommand(msg);
-            case GET_ONLINE -> server.sendLocalMessage("Online users: \n" + ChatCommandsHelper.getNicknames(new ArrayList<>(server.getOnlineClients())));
-            case RENAME -> executeRenameCommand(splitText(msg.getText()));
-            case END -> server.stopServer();
+            case GET_ONLINE -> executeGetOnline();
+            case END -> executeEndCommand();
             case DELETE -> executeDeleteCommand(msg);
-            default -> server.sendLocalMessage("Incorrect command");
+            default -> sendServerSystemMessage("Incorrect command");
         }
     }
 
+    // SERVER /help
+    // SERVER /help (0)/command
+    private void executeHelpCommand(Message msg) {
+        var args = msg.getCommandArgs();
+        sendServerSystemMessage(getCommandHelp(args.length == 0 ? msg.getCommand() : args[0]));
+    }
+
+    // SERVER /getcomms
     private void executeGetCommsCommand() {
-        var out = new ArrayList<String>();
-        out.addAll(getAllClientCommands());
-        out.addAll(getAllServerCommands());
-        server.sendLocalMessage(out.toString());
+        var commands = getAllClientCommands();
+        commands.addAll(getAllServerCommands());
+        sendServerSystemMessage(commands.toString());
     }
 
-    private void executeLogoutCommand(Message msg) {
-        if (splitText(msg.getText()).length != 1) {
-            server.sendLocalMessage("Incorrect command");
-            return;
-        }
-        var client = server.getClientByNickname(splitText(msg.getText())[0]);
-        if (client == null) {
-            server.sendLocalMessage("Nickname not found");
-            return;
-        }
-        msg.addRecipient(client);
-        msg.send();
+    private void executeUnneededCommands() {
+        sendServerSystemMessage("You don't need this commands");
     }
 
+    // SERVER /t (0)recipient (1...)text
+    // SERVER /t (0)recipient (1)/command (2...)args
+    // SERVER /t (0)recipient (1)/t (2)/recipient (3...)text
     private void executePrivateMsgCommand(Message msg) {
-        if (msg.getParts().length < 4) {
-            server.sendLocalMessage("Incorrect command");
+        var args = msg.getCommandArgs();
+        if (args.length < 2) {
+            sendServerSystemMessage("Incorrect command");
             return;
         }
-        var recipient = server.getClientByNickname(splitText(msg.getText())[0]);
+        var recipient = getClientByNickname(args[0]);
         if (recipient == null) {
-            server.sendLocalMessage("Nickname not found");
+            sendServerSystemMessage("Nickname not found");
             return;
         }
-        server.sendPrivateServerMsg(recipient, substringText(msg.getParts(), 3), true);
+        if (args[1].startsWith("/")) {
+            mb.reset().compositeMessage(connectParts(args, 0)).setRecipients(recipient).build().send();
+        } else {
+            mb.reset().isCommand(true).isPrivate(true).setSender(SERVER_NAME)
+                    .setRecipients(server, recipient).setText(connectParts(args, 1)).build().send();
+        }
     }
 
-    private void executeRenameCommand(String[] parts) {
-        if (parts.length != 2) {
-            server.sendLocalMessage("Incorrect command");
-            return;
-        }
-        var userNickname = parts[0];
-        var userNewNickname = parts[1];
-
-        if (DatabaseHelper.isNicknameFree(userNewNickname, server.getPort()) &&
-                DatabaseHelper.updateUserNickname(userNickname, userNewNickname, server.getPort())) {
-            var client = server.getClientByNickname(userNickname);
-            if (client != null) {
-                var msg = createMessage(connectWords(ServerHandler.SERVER_NAME, RENAME, userNewNickname),server);
-                msg.addRecipient(client);
-                msg.send();
-            }
-            server.broadcastMessage(createMessage(connectWords(ServerHandler.SERVER_NAME, String.format("%s now is %s!", userNickname, userNewNickname)),server));
-            return;
-        }
-        server.sendLocalMessage("Impossible change nickname.");
-    }
-
-
+    // SERVER /delete (0)nickname
     private void executeDeleteCommand(Message msg) {
-        if (msg.getParts().length != 3) {
-            server.sendLocalMessage("Incorrect command");
+        var args = msg.getCommandArgs();
+        if(args.length == 0) {
+            sendServerSystemMessage("Incorrect command");
             return;
         }
-        var userNickname = msg.getText();
-        var client = server.getClientByNickname(userNickname);
-        if (DatabaseHelper.deleteUser(userNickname, server.getPort())) {
-            server.sendLocalMessage(String.format("User \"%s\" is deleted.", userNickname));
+        var nickname = args[0];
+
+        var client = getClientByNickname(nickname);
+        if (DatabaseHelper.deleteUser(nickname)) {
+            sendServerSystemMessage(String.format("User \"%s\" is deleted.", nickname));
             if (client != null) {
-                client.sendMessage(createMessage(connectWords(ServerHandler.SERVER_NAME, END),server));
+                mb.reset().compositeMessage(END).setRecipients(client).build().send();
             }
             return;
         }
-        server.sendLocalMessage("User not found");
+        sendServerSystemMessage("User not found");
+    }
+
+    private void executeGetOnline() {
+        sendServerSystemMessage("Online users: \n" + server.getNicknames());
+    }
+
+    private void executeEndCommand() {
+        server.stopServer();
+    }
+
+    private void sendServerSystemMessage(String text) {
+        mb.reset().setServerSystemMessage(text).setRecipients(server).build().send();
     }
 }
 

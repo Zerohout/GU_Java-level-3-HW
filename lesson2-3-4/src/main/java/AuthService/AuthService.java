@@ -2,85 +2,137 @@ package AuthService;
 
 import Client.ClientHandler;
 import Message.Message;
-import Helpers.DatabaseHelper;
-import Server.ServerHandler;
+import Message.MessageBuilder;
 
 import java.util.Timer;
 import java.util.TimerTask;
 
 import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
+import static Helpers.ControlPanel.getCurrentServer;
+import static Database.DatabaseHelper.*;
+import static Message.MessageBuilder.*;
 
 public class AuthService {
-    private ServerHandler server;
-    private int port;
+    public static final String AUTH_SERVICE_NAME = "Auth_Service_2.0";
+    private final Object monitor1 = new Object();
     private int clientIdleTime = 120;
     private int waitingClientStep = 20;
-    public static final String AUTH_SERVICE_NAME = "Auth_Service_2.0";
+    private MessageBuilder mb;
 
-    public AuthService(ServerHandler server) {
-        this.server = server;
-        this.port = server.getPort();
-    }
-
-    public synchronized void clientAuthentication(Message msg, ClientHandler client) {
-        if (!msg.isCommand() || msg.getParts().length < 4) {
-            sendMessage("You cannot send messages while not get authorization.", client);
+    //region Reg auth methods
+    public void clientAuthentication(Message msg, ClientHandler client) {
+        if (!msg.isCommand()) {
+            sendMessageToClient("You cannot send messages while not get authorization.", client);
             return;
         }
-        var parts = splitText(msg.getText());
-
-        switch (msg.getCommand()) {
-            case AUTH -> {
-                if (parts.length != 2) break;
-                doAuthentication(parts, client);
-                return;
-            }
-            case REG -> {
-                if (parts.length != 3) break;
-                doRegistration(parts, client);
-                return;
+        synchronized (monitor1) {
+            switch (msg.getCommand()) {
+                case AUTH -> doAuthentication(msg.getCommandArgs(), client);
+                case REG -> doRegistration(msg.getCommandArgs(), client);
+                default -> sendMessageToClient("Incorrect data. Please try again", client);
             }
         }
-        sendMessage("Incorrect data. Please try again", client);
     }
 
-    private void doAuthentication(String[] parts, ClientHandler client) {
-        var user = DatabaseHelper.getUser(parts[0], parts[1], this.port);
+    private void doAuthentication(String[] args, ClientHandler client) {
+        if (args.length != 2) {
+            sendMessageToClient("Incorrect data. Please try again", client);
+            return;
+        }
+        var user = getUserByLoginPass(args[0], args[1]);
         if (user == null) {
-            sendMessage("Incorrect login and/or password", client);
+            sendMessageToClient("Incorrect login and/or password", client);
             return;
         }
-        if (DatabaseHelper.isNicknameFree(user.getNickname(),server.getPort())) {
-            user.isOnline(true);
-            client.setUser(user);
-            sendMessage(connectWords(AUTH_OK, user.getNickname()), client);
+
+        if (user.isOnline()) {
+            sendMessageToClient(String.format("Nickname[%s] is already in use", user.getNickname()), client);
         } else {
-            sendMessage(String.format("Nickname[%s] is already in use", user.getNickname()), client);
+            user.isOnline(true);
+            updateUserIsOnlineStatus(user.getNickname(), true);
+            client.setUser(user);
+            client.isAuth(true);
+            mb.reset().compositeMessage(connectWords(AUTH_OK, user.getNickname())).setRecipients(client).build().send();
         }
     }
 
-    private void doRegistration(String[] parts, ClientHandler client) {
+    private void doRegistration(String[] args, ClientHandler client) {
+        if (args.length != 3) {
+            sendMessageToClient("Incorrect data. Please try again", client);
+            return;
+        }
         String text;
-        if (DatabaseHelper.insertUser(new User(parts[0], parts[1], parts[2], this.port))) {
+        if (addNewUserToDB(args)) {
             text = String.format("Registration is done. Please get authorization by command \"%s login pass\"", AUTH);
         } else {
             text = String.format("Registration is not complete. Please try again or get authorization by command \"%s login pass\"", AUTH);
         }
-        sendMessage(text, client);
+        sendMessageToClient(text, client);
+    }
+    //endregion
+
+    //region Technical methods
+    public void start() {
+        mb = new MessageBuilder();
+        sendMessageToServer("started and ready to work.");
     }
 
-    private void sendMessage(String text, ClientHandler client) {
-        var msg = createMessage(connectWords(AUTH_SERVICE_NAME, text),server);
-        msg.addRecipient(client);
-        msg.send();
+    private void sendMessageToClient(String text, ClientHandler client) {
+        mb.reset().setAuthSystemMessage(text).setRecipients(client).build().send();
     }
 
+    private void sendMessageToServer(String text) {
+        mb.reset().setAuthSystemMessage(text).setRecipients(getCurrentServer()).build().send();
+    }
+
+    public void stop() {
+        sendMessageToServer("stopped.");
+    }
+    //endregion
+
+    //region Users operation methods
+    private User getUserByNickname(String nickname) {
+        var users = getAllUsers();
+        if (users == null) return null;
+        for (var user : users) {
+            if (user.isNicknameCorrect(nickname)) return user;
+        }
+        return null;
+    }
+
+    private User getUserByLogin(String login) {
+        var users = getAllUsers();
+        if (users == null) return null;
+        for (var user : users) {
+            if (user.isLoginCorrect(login)) return user;
+        }
+        return null;
+    }
+
+    private User getUserByLoginPass(String login, String password) {
+        var users = getAllUsers();
+        if (users == null) return null;
+        for (var user : users) {
+            if (user.isLoginPassCorrect(login, password)) return user;
+        }
+        return null;
+    }
+
+    private boolean addNewUserToDB(String[] args) {
+        var newUser = new UserBuilder().setLogin(args[0]).setPassword(args[1]).setNickname(args[2]).isOnline(true).build();
+        if (insertUser(newUser)) {
+            return true;
+        }
+        return false;
+    }
+    //endregion
+
+    //region ClientIdleWatcher
     public void setClientIdleWatcher(ClientHandler client) {
         var text = String.format("""
                 Please get authorization by command "%s login password"
                 or get registration by command "%s login password nickname\"""", AUTH, REG);
-        sendMessage(text, client);
+        sendMessageToClient(text, client);
         var timer = new Timer(true);
         var timerAction = new TimerAction(client, timer);
         timer.schedule(timerAction, 0, waitingClientStep * 1000);
@@ -91,7 +143,7 @@ public class AuthService {
         private int timerCount;
         private Timer timer;
 
-        public TimerAction(ClientHandler client, Timer timer) {
+        TimerAction(ClientHandler client, Timer timer) {
             this.client = client;
             this.timer = timer;
         }
@@ -102,17 +154,18 @@ public class AuthService {
                 timer.cancel();
             } else {
                 if (timerCount >= clientIdleTime) {
-                    sendMessage(END, client);
+                    mb.reset().compositeMessage(END).setRecipients(client).build().send();
                     timer.cancel();
                 } else {
                     var text = String.format("""
                     There are %d seconds left until the end of authentication.
                     After the time expires, you will be forcibly disconnected from the server.""",
                             clientIdleTime - timerCount);
-                    sendMessage(text, client);
+                    sendMessageToClient(text, client);
                 }
             }
             timerCount += waitingClientStep;
         }
     }
+    //endregion
 }

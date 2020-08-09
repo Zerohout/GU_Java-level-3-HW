@@ -7,19 +7,13 @@ public class User implements Serializable {
     private String login;
     private String password;
     private String nickname;
-    private boolean isOnline = true;
-    private int serverPort;
+    private boolean isOnline;
 
-    public User(String nickname, int serverPort) {
-        this.nickname = nickname;
-        this.serverPort = serverPort;
-    }
-
-    public User(String login, String password, String nickname, int serverPort) {
+    public User(String login, String password, String nickname, boolean isOnline) {
         this.login = login;
         this.password = password;
         this.nickname = nickname;
-        this.serverPort = serverPort;
+        this.isOnline = isOnline;
     }
 
     public String getLogin() {
@@ -34,9 +28,6 @@ public class User implements Serializable {
         return this.nickname;
     }
 
-    public int getServerPort() {
-        return this.serverPort;
-    }
 
     public void setId(int id) {
         this.id = id;
@@ -52,5 +43,17 @@ public class User implements Serializable {
 
     public void isOnline(boolean isOnline) {
         this.isOnline = isOnline;
+    }
+
+    public boolean isLoginPassCorrect(String login, String password){
+        return this.login.equals(login) && this.password.equals(password);
+    }
+
+    public boolean isLoginCorrect(String login){
+        return this.login.equals(login);
+    }
+
+    public boolean isNicknameCorrect(String nickname){
+        return this.nickname.equals(nickname);
     }
 }

@@ -1,28 +1,46 @@
 package Helpers;
 
 import Client.ClientApp;
+import Database.DatabaseHelper;
 import Server.ServerApp;
+import Server.ServerHandler;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 import static java.awt.GridBagConstraints.*;
 
 public class ControlPanel extends JFrame {
+    private static ServerHandler currentServer;
     private JCheckBox autoAuthChcBox;
     private JCheckBox supSevMonitorsChcBox;
     private JButton createClientBtn;
     private JButton openServerBtn;
     private JTextField serverPortTField;
+    private ServerApp server;
+    private ExecutorService executorService;
 
     private int openedClientFramesCount;
     private int port;
     private int monitorsCount = getLocalGraphicsEnvironment().getScreenDevices().length;
 
     public ControlPanel() {
+        executorService = Executors.newFixedThreadPool(5);
         prepareGUI();
         DatabaseHelper.createUsersTable();
+    }
+
+    public static ServerHandler getCurrentServer() {
+        return currentServer;
+    }
+
+    public static void setCurrentServer(ServerHandler currentServer) {
+        ControlPanel.currentServer = currentServer;
     }
 
     private boolean getAutoAuthChcBoxStatus() {
@@ -56,6 +74,14 @@ public class ControlPanel extends JFrame {
         addServerComponents();
         addClientComponents();
         setComponentsEnabled(false);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                if (server != null) server.close();
+                executorService.shutdown();
+                super.windowClosing(e);
+            }
+        });
     }
 
     //region Adding server components
@@ -131,18 +157,19 @@ public class ControlPanel extends JFrame {
             return;
         }
         new Thread(() -> {
-            new ServerApp(this, port);
+            server = new ServerApp(this, port);
             setComponentsEnabled(true);
         }).start();
     }
 
-    private synchronized void createClientAction() {
+    private void createClientAction() {
         createClientBtn.setEnabled(false);
         if (supSevMonitorsChcBox != null && supSevMonitorsChcBox.isEnabled()) {
             ClientApp.isSupSevMonitors = getSupSevMonitorsChcBoxStatus();
             supSevMonitorsChcBox.setEnabled(false);
         }
-        new Thread(() -> new ClientApp("localhost", port, getAutoAuthChcBoxStatus() && openedClientFramesCount > 1)).start();
+
+        executorService.execute(() -> new ClientApp("localhost", port, getAutoAuthChcBoxStatus() && openedClientFramesCount > 1));
 
         openedClientFramesCount++;
         createClientBtn.setEnabled(true);

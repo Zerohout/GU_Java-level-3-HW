@@ -1,22 +1,24 @@
 package Client;
 
+import AuthService.UserBuilder;
 import AuthService.User;
-import Server.ServerHandler;
 import AuthService.AuthService;
-import Helpers.DatabaseHelper;
+import Database.DatabaseHelper;
+import Helpers.Sendable;
+import Server.ServerHandler;
+import Message.MessageBuilder;
 import Message.Message;
 
 import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
+import static Message.MessagesWriterReader.*;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.net.Socket;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
 
-
-public class ClientHandler implements Serializable {
+public class ClientHandler implements Serializable, Sendable {
     transient private ServerHandler server;
     transient private Socket socket;
     transient private AuthService authService;
@@ -24,10 +26,13 @@ public class ClientHandler implements Serializable {
     transient private DataOutputStream out;
     transient private DataInputStream in;
     private boolean isAuth = false;
-    private Message msg;
     private User user;
+    private MessageBuilder mb;
+    private ArrayList<String> messages;
 
     public ClientHandler(ServerHandler server, Socket socket) {
+        messages = new ArrayList<>();
+        mb = new MessageBuilder();
         this.server = server;
         this.socket = socket;
         try {
@@ -36,7 +41,7 @@ public class ClientHandler implements Serializable {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        this.user = new User(socket.toString(), server.getPort());
+        this.user = new UserBuilder().setNickname(socket.toString()).build();
         this.authService = server.getAuthService();
         this.commandHandler = new ClientCommandHandler(this, server);
         new Thread(this::readMessage).start();
@@ -45,55 +50,53 @@ public class ClientHandler implements Serializable {
     private void readMessage() {
         try {
             while (!socket.isClosed()) {
-                msg = createLocalMessage(in.readUTF(),server);
-                if (msg.isCommand()) {
-                    commandHandler.commandListener(msg);
-                    continue;
-                }
-                sendMessage(msg);
+                mb.reset().compositeMessage(in.readUTF()).addRecipients(this).build().send();
             }
         } catch (IOException ex) {
-            return;
+            System.out.println(ex.getMessage());
         }
     }
 
     public void sendMessage(Message msg) {
-        if (!isAuth) {
-            if (!msg.getSender().equals(AuthService.AUTH_SERVICE_NAME)) {
-                if (msg.isCommand() && msg.getSender().equals(ServerHandler.SERVER_NAME)) {
-                    commandHandler.commandListener(msg);
-                    return;
-                }
-                this.authService.clientAuthentication(msg, this);
-            } else {
-                if (msg.isCommand()) {
-                    commandHandler.commandListener(msg);
-                }
-                sendLocalMessage(msg);
-            }
-            return;
-        }
-        if (msg.isCommand()) {
-            commandHandler.commandListener(msg);
-            return;
-        }
-        server.broadcastMessage(msg);
+        if (msg.isSystem() || msg.isPrivate()) sendLocalMessage(msg);
+        else if (!isAuth && !msg.getCommand().equals(END)) doAuthentication(msg);
+        else if (msg.isCommand()) commandHandler.commandListener(msg);
+        else server.broadcastMessage(msg,false);
     }
 
     public void sendLocalMessage(Message msg) {
         try {
+            var text = msg.getConnectedText();
+            if (text.startsWith(new SimpleDateFormat("dd.MM.yy").format(new Date()))) {
+                if (messages.size() == 100) {
+                    addMessagesToFile(getLogin(), messages);
+                    messages.clear();
+                }
+                messages.add(msg.getConnectedText());
+            }
             out.writeUTF(msg.getConnectedText());
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (IOException ex) {
+            ex.printStackTrace();
         }
     }
 
-    public void doAuthentication() {
+    public void recoveryMessages(ArrayList<String> messages) {
+        try {
+            for (var text : messages) {
+                out.writeUTF(text);
+            }
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void doAuthentication(Message msg) {
         authService.clientAuthentication(msg, this);
     }
 
     public void updateUser() {
         this.user = DatabaseHelper.getUser(user.getId());
+        DatabaseHelper.closeConnection();
     }
 
     //region Getters and Setters
@@ -106,6 +109,12 @@ public class ClientHandler implements Serializable {
     }
 
     public void isAuth(boolean isAuth) {
+        if (isAuth) {
+            recoveryMessages(getMessagesFromFile(getLogin()));
+        } else {
+            addMessagesToFile(getLogin(), messages);
+            messages.clear();
+        }
         this.isAuth = isAuth;
     }
 
@@ -113,16 +122,27 @@ public class ClientHandler implements Serializable {
         return user.isOnline();
     }
 
-    public String getNickname() {
+    public boolean isNicknameCorrect(String nickname) {
+        return user.isNicknameCorrect(nickname);
+    }
+
+    @Override
+    public String getName() {
         return this.user.getNickname();
+    }
+
+    public String getLogin() {
+        return this.user.getLogin();
     }
     //endregion
 
     public void closeClientHandler() throws IOException {
-        sendLocalMessage(createMessage(connectWords(getNickname(), END),server));
+        sendLocalMessage(mb.reset().compositeMessage(END).build());
         in.close();
         out.close();
         socket.close();
-        user.isOnline(false);
+        DatabaseHelper.updateUserIsOnlineStatus(getName(),false);
     }
+
+
 }

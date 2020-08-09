@@ -1,29 +1,25 @@
 package Client;
 
-import Helpers.ChatCommandsHelper;
-import Helpers.DatabaseHelper;
+import Database.DatabaseHelper;
 import Server.ServerHandler;
 import Message.Message;
+import Message.MessageBuilder;
 
+import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 
 import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
-import static Server.ServerHandler.*;
+import static Message.MessageBuilder.*;
 
 public class ClientCommandHandler {
-
     private ClientHandler client;
     private ServerHandler server;
+    private MessageBuilder mb;
 
     public ClientCommandHandler(ClientHandler client, ServerHandler server) {
         this.client = client;
         this.server = server;
-    }
-
-    private void sendMessage(Message msg) {
-        client.sendLocalMessage(msg);
+        mb = new MessageBuilder();
     }
 
     public synchronized void commandListener(Message msg) {
@@ -33,52 +29,59 @@ public class ClientCommandHandler {
         switch (command) {
             case HELP -> executeHelpCommand(msg);
             case GET_COMMS -> executeGetCommsCommand();
-            case AUTH, REG -> executeRegCommand();
-            case AUTH_OK -> server.subscribe(client);
-            case LOGOUT -> server.unsubscribe(client);
-            case PRIVATE_MSG -> executePrivateMsgCommand(msg);
+            case AUTH, REG -> executeUnneededCommand();
+            case AUTH_OK -> executeAuthOkCommand(msg);
+            case LOGOUT -> executeLogoutCommand();
             case RENAME -> executeRenameCommand(msg);
+            case PRIVATE_MSG -> executePrivateMsgCommand(msg);
             case END -> executeEndCommand();
             case GET_ONLINE -> executeGetOnlineCommand();
-            default -> executeDefaultCommand();
+            default -> sendIncorrectCommandMessage();
         }
     }
 
+    // sender /help
+    // sender /help (0)arg
     private void executeHelpCommand(Message msg) {
-        sendMessage(createMessage(connectWords(SERVER_NAME, getCommandHelp(msg.getParts().length == 2 ? msg.getCommand() : msg.getText())), server));
+        var args = msg.getCommandArgs();
+        sendServerSystemMessage(getCommandHelp(args.length == 0 ? msg.getCommand() : args[0]));
     }
 
-    private void executeGetCommsCommand(){
-        sendMessage(createMessage(connectWords(SERVER_NAME, "Available commands:", getAllClientCommands().toString()), server));
+
+    private void executeGetCommsCommand() {
+        sendServerSystemMessage(getAllClientCommands().toString());
     }
 
-    private void executeRegCommand() {
-        if (!client.isAuth()) {
-            client.doAuthentication();
+
+    private void executeUnneededCommand() {
+        sendServerSystemMessage("You don't need this commands");
+    }
+
+    // sender /authok (0)nickname
+    private void executeAuthOkCommand(Message msg) {
+        mb.convertMsgToBuilder(msg).isSystem(true).setRecipients(client)
+                .setText(msg.getText()).build().send();
+        server.subscribe(client);
+    }
+
+
+
+    private void executeLogoutCommand() {
+        server.unsubscribe(client);
+    }
+
+    // sender /t (0)recipient (1...)text
+    private void executePrivateMsgCommand(Message msg) {
+        var recipient = ServerHandler.getClientByNickname(msg.getCommandArgs()[0]);
+        if (recipient == null) {
+            sendServerSystemMessage("User not found");
             return;
         }
-        sendMessage(createMessage(connectWords(SERVER_NAME, "You already logged in server. If you want log in with other login, use \"" + LOGOUT + "\""), server));
+        mb.reset().setSender(client.getName()).isCommand(true).isPrivate(true).addRecipients(client, recipient)
+                .setText(connectParts(msg.getCommandArgs(), 1)).build().send();
     }
 
-    private void executePrivateMsgCommand(Message msg){
-        if (msg.getRecipients().size() == 0) {
-            msg = createPrivateMessage(substringText(splitText(msg.getText()), 1), client,
-                    server.getClientByNickname(splitText(msg.getText())[0]), server);
-        }
-        msg.send();
-    }
-
-    private void executeRenameCommand(Message msg){
-        if (DatabaseHelper.isNicknameFree(msg.getText(), server.getPort()) &&
-                DatabaseHelper.updateUserNickname(client.getNickname(), msg.getText(), server.getPort())) {
-            client.updateUser();
-            sendMessage(msg);
-        } else {
-            client.sendLocalMessage(createMessage(connectWords(SERVER_NAME, "Impossible change nickname."), server));
-        }
-    }
-
-    private void executeEndCommand(){
+    private void executeEndCommand() {
         try {
             server.closeClient(client);
         } catch (IOException e) {
@@ -86,11 +89,35 @@ public class ClientCommandHandler {
         }
     }
 
-    private void executeGetOnlineCommand(){
-        sendMessage(createMessage(connectWords(SERVER_NAME, "Online users: \n" + ChatCommandsHelper.getNicknames(new ArrayList<>(server.getOnlineClients()))), server));
+    private void executeGetOnlineCommand() {
+        sendServerSystemMessage("Online users: \n" + server.getNicknames());
     }
 
-    private void executeDefaultCommand(){
-        sendMessage(createMessage(connectWords(SERVER_NAME, "Incorrect command"), server));
+    private void sendIncorrectCommandMessage() {
+        sendServerSystemMessage("Incorrect command");
+    }
+
+    // sender /rename (0)login (1)pass (2)new_nickname
+    private void executeRenameCommand(Message msg) {
+        var args = msg.getCommandArgs();
+        if(args.length < 3) sendIncorrectCommandMessage();
+        var user = DatabaseHelper.getUser(args[0], args[1]);
+        if (user == null) {
+            sendServerSystemMessage("Incorrect login/password.");
+            return;
+        }
+
+        if (DatabaseHelper.isNicknameFree(args[2]) &&
+                DatabaseHelper.updateUserNickname(args[0],args[1],args[2])) {
+            client.updateUser();
+            client.sendLocalMessage(mb.convertMsgToBuilder(msg).setCommandArgs(new String[]{args[2]}).build());
+        } else {
+            sendServerSystemMessage("Impossible change nickname");
+        }
+    }
+
+
+    private void sendServerSystemMessage(String text) {
+        mb.reset().setServerSystemMessage(text).setRecipients(client).build().send();
     }
 }

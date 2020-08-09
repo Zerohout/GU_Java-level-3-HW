@@ -1,142 +1,108 @@
 package Message;
 
-import Client.ClientHandler;
-import Server.ServerHandler;
-import AuthService.AuthService;
-import Message.MessageService.CommandType;
-
-
-import static Helpers.ChatCommandsHelper.*;
-import static Message.MessageService.*;
+import Helpers.Sendable;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+
+import static Message.MessageBuilder.connectParts;
 
 public class Message implements Serializable {
-    private String text = "";
-    private String sender = "";
-    private String sendDate = "";
-    private String command = "";
-    private boolean isLocal;
+    private String text;
+    private String sender;
+    private String sendDate;
+    private String command;
+    private String[] commandArgs;
+    private boolean isSystem;
     private boolean isPrivate;
-    private boolean isRecovery;
-    private boolean isCommand = false;
-    transient private ServerHandler server;
-    private CommandType commandType;
-    private ArrayList<ClientHandler> recipients = new ArrayList<>();
+    private boolean isCommand;
+    private ArrayList<Sendable> recipients;
 
-    public Message(String sender, String command, String text, CommandType commandType, ServerHandler server) {
+    public Message(String sendDate, String sender, String command, String[] commandArgs,
+                   String text, ArrayList<Sendable> recipients,
+                   boolean isSystem, boolean isPrivate, boolean isCommand) {
+        this.sendDate = sendDate;
         this.sender = sender;
-        this.text = text;
         this.command = command;
-        this.commandType = commandType;
-        this.isCommand = true;
-        this.isPrivate = command.equals(PRIVATE_MSG);
-        this.isLocal = false;
-        this.server = server;
-    }
-
-    public Message(String sender, String text, String sendDate, ServerHandler server) {
-        this.sender = sender;
+        this.commandArgs = commandArgs;
         this.text = text;
-        this.sendDate = sendDate;
-        this.isLocal = true;
-        this.server = server;
+        this.recipients = recipients;
+        this.isSystem = isSystem;
+        this.isPrivate = isPrivate;
+        this.isCommand = isCommand;
     }
 
-    public Message(String sender, String text, ServerHandler server) {
-        this.sender = sender;
-        this.text = text;
-        this.isLocal = false;
-        this.server = server;
-    }
-
-    public void addRecipients(List<ClientHandler> recipients) {
-        this.recipients.addAll(recipients);
-    }
-
-    public void addRecipients(ClientHandler... recipients) {
-        this.recipients.addAll(Arrays.asList(recipients));
-    }
-
-    public void addRecipient(ClientHandler recipient) {
-        this.recipients.add(recipient);
-    }
-
-    //region Getters and setters
-    public String getText() {
-        return this.text;
-    }
-
-    public void setSendDate(String sendDate) {
-        this.sendDate = sendDate;
+    //region Getters
+    public String getSendDate() {
+        return sendDate;
     }
 
     public String getSender() {
         return this.sender;
     }
 
-    public ArrayList<ClientHandler> getRecipients() {
-        return this.recipients;
-    }
-
-    public boolean isCommand() {
-        return this.isCommand;
-    }
-
     public String getCommand() {
         return this.command;
     }
 
-    public String[] getParts() {
-        return splitText(connectWords(this.sender, this.command, this.text));
+    public String[] getCommandArgs() {
+        return this.commandArgs;
+    }
+
+    public String getText() {
+        return this.text;
+    }
+
+    public ArrayList<Sendable> getRecipients() {
+        return this.recipients;
+    }
+
+    public boolean isSystem() {
+        return this.isSystem;
     }
 
     public boolean isPrivate() {
         return this.isPrivate;
     }
 
-    public void isRecovery(boolean isRecovery){this.isRecovery = isRecovery;}
+    public boolean isCommand() {
+        return this.isCommand;
+    }
     //endregion
 
     public void send() {
-        recoverySave();
-        for (var client : getRecipients()) {
-            if (client == null) continue;
-            if (isPrivate) {
-                client.sendLocalMessage(this);
-            } else {
-                if (isCommand) {
-                    client.sendMessage(this);
-                } else {
-                    client.sendLocalMessage(this);
-                }
+        for(var i = 0; i < recipients.size(); i++){
+            if(recipients.get(i) == null) continue;
+            if (isCommand && !isPrivate) {
+                recipients.get(i).sendMessage(this);
+                continue;
             }
+            if(!isCommand && !isSystem && !isPrivate){
+                recipients.get(i).sendMessage(this);
+                continue;
+            }
+            recipients.get(i).sendLocalMessage(this);
         }
     }
 
-    private void recoverySave(){
-        if (!isRecovery && !sender.equals(AuthService.AUTH_SERVICE_NAME) && !sender.equals(ServerHandler.SERVER_NAME)) {
-            if (!isCommand || isPrivate) {
-                server.addRecoveryMessage(this);
-                this.isRecovery = false;
-            }
+    public void sendLocal(){
+        for(var i = 0; i < recipients.size(); i++){
+            recipients.get(i).sendLocalMessage(this);
         }
     }
 
     public String getConnectedText() {
         if (isCommand) {
             if (isPrivate) {
-                if (recipients.size() >= 1) {
-                    return String.format("%s %s -> %s: %s", this.sendDate, this.sender,
-                            this.recipients.get(recipients.size() - 1).getNickname(), this.text);
-                }
+                return String.format("%s %s -> %s: %s",
+                        this.sendDate, this.sender, recipients.get(1).getName(), text);
             }
-            return connectWords(this.sender, this.command, this.text);
+            var args = connectParts(commandArgs, 0);
+            return String.format("%s %s%s%s", this.sender, this.command,
+                    args.equals("") ? args : " ", args);
+        } else if (isSystem) {
+            return String.format("%s: %s", this.sender, this.text);
         }
-        if (isLocal) return connectWords(this.sendDate, this.sender, this.text);
-        return connectWords(this.sender, this.text);
+        return String.format("%s %s: %s", this.sendDate, this.sender, this.text);
     }
 }
