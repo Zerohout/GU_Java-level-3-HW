@@ -41,7 +41,7 @@ public class DatabaseHelper {
 
     public static boolean insertUser(User user) {
         return executeUpdate(dbr.reset().insert("login", user.getLogin()).insert("password", user.getPassword())
-                .insert("nickname", user.getNickname()).build());
+                .insert("nickname", user.getNickname()).buildInsert().build());
     }
 
     public static boolean updateUserNickname(String userNickname, String userNewNickname) {

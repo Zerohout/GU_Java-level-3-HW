@@ -9,6 +9,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment;
 import static java.awt.GridBagConstraints.*;
@@ -21,12 +23,14 @@ public class ControlPanel extends JFrame {
     private JButton openServerBtn;
     private JTextField serverPortTField;
     private ServerApp server;
+    private ExecutorService executorService;
 
     private int openedClientFramesCount;
     private int port;
     private int monitorsCount = getLocalGraphicsEnvironment().getScreenDevices().length;
 
     public ControlPanel() {
+        executorService = Executors.newFixedThreadPool(5);
         prepareGUI();
         DatabaseHelper.createUsersTable();
     }
@@ -73,7 +77,8 @@ public class ControlPanel extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                if(server != null) server.close();
+                if (server != null) server.close();
+                executorService.shutdown();
                 super.windowClosing(e);
             }
         });
@@ -157,13 +162,14 @@ public class ControlPanel extends JFrame {
         }).start();
     }
 
-    private synchronized void createClientAction() {
+    private void createClientAction() {
         createClientBtn.setEnabled(false);
         if (supSevMonitorsChcBox != null && supSevMonitorsChcBox.isEnabled()) {
             ClientApp.isSupSevMonitors = getSupSevMonitorsChcBoxStatus();
             supSevMonitorsChcBox.setEnabled(false);
         }
-        new Thread(() -> new ClientApp("localhost", port, getAutoAuthChcBoxStatus() && openedClientFramesCount > 1)).start();
+
+        executorService.execute(() -> new ClientApp("localhost", port, getAutoAuthChcBoxStatus() && openedClientFramesCount > 1));
 
         openedClientFramesCount++;
         createClientBtn.setEnabled(true);

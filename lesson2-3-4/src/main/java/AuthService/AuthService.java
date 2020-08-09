@@ -93,7 +93,7 @@ public class AuthService {
     //region Users operation methods
     private User getUserByNickname(String nickname) {
         var users = getAllUsers();
-        if(users == null) return null;
+        if (users == null) return null;
         for (var user : users) {
             if (user.isNicknameCorrect(nickname)) return user;
         }
@@ -102,7 +102,7 @@ public class AuthService {
 
     private User getUserByLogin(String login) {
         var users = getAllUsers();
-        if(users == null) return null;
+        if (users == null) return null;
         for (var user : users) {
             if (user.isLoginCorrect(login)) return user;
         }
@@ -111,7 +111,7 @@ public class AuthService {
 
     private User getUserByLoginPass(String login, String password) {
         var users = getAllUsers();
-        if(users == null) return null;
+        if (users == null) return null;
         for (var user : users) {
             if (user.isLoginPassCorrect(login, password)) return user;
         }
@@ -119,14 +119,9 @@ public class AuthService {
     }
 
     private boolean addNewUserToDB(String[] args) {
-        var users = getAllUsers();
-        if(users == null) return false;
-        if (getUserByLogin(args[0]) == null && getUserByNickname(args[2]) == null) {
-            var newUser = new UserBuilder().setLogin(args[0]).setPassword(args[1]).setNickname(args[2]).isOnline(true).build();
-            if (insertUser(newUser)) {
-                users.add(newUser);
-                return true;
-            }
+        var newUser = new UserBuilder().setLogin(args[0]).setPassword(args[1]).setNickname(args[2]).isOnline(true).build();
+        if (insertUser(newUser)) {
+            return true;
         }
         return false;
     }

@@ -4,7 +4,7 @@ public class UserBuilder {
     private String login = "";
     private String password = "";
     private String nickname = "";
-    private boolean isOnline = true;
+    private boolean isOnline = false;
 
     //region Setters
     public UserBuilder setLogin(String login){
