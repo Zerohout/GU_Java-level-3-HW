@@ -18,10 +18,10 @@ public class MainClass {
         Semaphore smp = new Semaphore(CARS_COUNT / 2);
         Lock finish = new ReentrantLock();
 
-        Race race = new Race(new Road(60), new Tunnel(), new Road(40));
+        Race race = new Race(new Road(60), new Tunnel(CARS_COUNT / 2), new Road(40));
         Car[] cars = new Car[CARS_COUNT];
         for (int i = 0; i < cars.length; i++) {
-            cars[i] = new Car(race, 20 + (int) (Math.random() * 10), cb, cdl, smp, finish);
+            cars[i] = new Car(race, 20 + (int) (Math.random() * 10), cb, cdl);
         }
         for (int i = 0; i < cars.length; i++) {
             new Thread(cars[i]).start();
@@ -29,6 +29,7 @@ public class MainClass {
         try {
             cb.await();
             System.out.println("ВАЖНОЕ ОБЪЯВЛЕНИЕ >>> Гонка началась!!!");
+            cb.await();
         } catch (InterruptedException | BrokenBarrierException e) {
             e.printStackTrace();
         }
