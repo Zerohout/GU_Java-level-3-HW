@@ -3,14 +3,16 @@ package AuthService;
 import Client.ClientHandler;
 import Message.Message;
 import Message.MessageBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Timer;
 import java.util.TimerTask;
 
+import static Database.DatabaseHelper.*;
 import static Helpers.ChatCommandsHelper.*;
 import static Helpers.ControlPanel.getCurrentServer;
-import static Database.DatabaseHelper.*;
-import static Message.MessageBuilder.*;
+import static Message.MessageBuilder.connectWords;
 
 public class AuthService {
     public static final String AUTH_SERVICE_NAME = "Auth_Service_2.0";
@@ -18,36 +20,55 @@ public class AuthService {
     private int clientIdleTime = 120;
     private int waitingClientStep = 20;
     private MessageBuilder mb;
+    private static final Logger logger = LogManager.getLogger(AuthService.class);
 
     //region Reg auth methods
     public void clientAuthentication(Message msg, ClientHandler client) {
+        logger.info("Поступило сообщение {} от клиента {}", msg.getConnectedText(), client.getName());
         if (!msg.isCommand()) {
-            sendMessageToClient("You cannot send messages while not get authorization.", client);
+            var text = "You cannot send messages while not get authorization.";
+            sendMessageToClient(text, client);
+            logger.warn("Обнаружена попытка отправки сообщения не авторизовавшись.");
             return;
         }
         synchronized (monitor1) {
+            logger.info("Сообщение {} распознано как команда. Отправлено на обработку.", msg.getConnectedText());
             switch (msg.getCommand()) {
                 case AUTH -> doAuthentication(msg.getCommandArgs(), client);
                 case REG -> doRegistration(msg.getCommandArgs(), client);
-                default -> sendMessageToClient("Incorrect data. Please try again", client);
+                default -> {
+                    var text = "Incorrect data. Please try again";
+                    sendMessageToClient(text, client);
+                    logger.warn("Команда {} не распознана.", msg.getCommand());
+                }
             }
         }
     }
 
     private void doAuthentication(String[] args, ClientHandler client) {
+        logger.info("Сообщение распознанно как команда /auth");
         if (args.length != 2) {
-            sendMessageToClient("Incorrect data. Please try again", client);
+            var text = "Incorrect data. Please try again";
+            sendMessageToClient(text, client);
+            logger.warn("Команда /auth построена некорректно.");
             return;
         }
         var user = getUserByLoginPass(args[0], args[1]);
         if (user == null) {
-            sendMessageToClient("Incorrect login and/or password", client);
+            var text = "Incorrect login and/or password";
+            sendMessageToClient(text, client);
+            logger.warn("Клиент {} ввел некорректный логин и/или пароль.", client.getName());
             return;
         }
 
         if (user.isOnline()) {
-            sendMessageToClient(String.format("Nickname[%s] is already in use", user.getNickname()), client);
+            var text = String.format("Nickname[%s] is already in use", user.getNickname());
+            sendMessageToClient(text, client);
+            logger.warn("Попытка авторизоваться клиентом {} под ником {}. Клиент под данным ником уже онлайн.",
+                    client.getName(), user.getNickname());
         } else {
+            logger.info("Клиент {} авторизован и ему присвоен ник {}. Клиенту отправлена команда {}",
+                    client.getName(), user.getNickname(), connectWords(AUTH_OK, user.getNickname()));
             user.isOnline(true);
             updateUserIsOnlineStatus(user.getNickname(), true);
             client.setUser(user);
@@ -57,14 +78,19 @@ public class AuthService {
     }
 
     private void doRegistration(String[] args, ClientHandler client) {
+        logger.info("Сообщение распознанно как команда /reg");
         if (args.length != 3) {
-            sendMessageToClient("Incorrect data. Please try again", client);
+            var text = "Incorrect data. Please try again";
+            sendMessageToClient(text, client);
+            logger.warn("Команда /reg построена некорректно.");
             return;
         }
         String text;
         if (addNewUserToDB(args)) {
+            logger.info("В БД был добавлен новый пользователь. Логин: {}, пароль {}, никнейм {}.", args[0], args[1], args[2]);
             text = String.format("Registration is done. Please get authorization by command \"%s login pass\"", AUTH);
         } else {
+            logger.warn("Новый пользователь не был добавлен в БД. Логин: {}, пароль {}, никнейм {}.", args[0], args[1], args[2]);
             text = String.format("Registration is not complete. Please try again or get authorization by command \"%s login pass\"", AUTH);
         }
         sendMessageToClient(text, client);
@@ -75,18 +101,22 @@ public class AuthService {
     public void start() {
         mb = new MessageBuilder();
         sendMessageToServer("started and ready to work.");
+        logger.info("Сервис {} был включен.", AUTH_SERVICE_NAME);
     }
 
     private void sendMessageToClient(String text, ClientHandler client) {
         mb.reset().setAuthSystemMessage(text).setRecipients(client).build().send();
+        logger.info("Клиенту {} отправлено сообщение: {}", client.getName(), text);
     }
 
     private void sendMessageToServer(String text) {
         mb.reset().setAuthSystemMessage(text).setRecipients(getCurrentServer()).build().send();
+        logger.info("Серверу отправлено сообщение: {}", text);
     }
 
     public void stop() {
         sendMessageToServer("stopped.");
+        logger.info("Сервис {} был выключен.", AUTH_SERVICE_NAME);
     }
     //endregion
 
@@ -120,10 +150,7 @@ public class AuthService {
 
     private boolean addNewUserToDB(String[] args) {
         var newUser = new UserBuilder().setLogin(args[0]).setPassword(args[1]).setNickname(args[2]).isOnline(true).build();
-        if (insertUser(newUser)) {
-            return true;
-        }
-        return false;
+        return insertUser(newUser);
     }
     //endregion
 
@@ -136,6 +163,7 @@ public class AuthService {
         var timer = new Timer(true);
         var timerAction = new TimerAction(client, timer);
         timer.schedule(timerAction, 0, waitingClientStep * 1000);
+        logger.info("К клиенту {} был привязан наблюдатель. Таймер был включен", client.getName());
     }
 
     private class TimerAction extends TimerTask {
@@ -151,9 +179,11 @@ public class AuthService {
         @Override
         public void run() {
             if (client == null || !client.isOnline() || client.isAuth()) {
+                logger.info("Таймер наблюдателя был остановлен. По одной из причин: клиент отсутствует, клиент оффлайн, клиент авторизован.");
                 timer.cancel();
             } else {
                 if (timerCount >= clientIdleTime) {
+                    logger.info("Наблюдатель отключил клиента {} по причине истечения времени ожидания. Таймер был остановлен.", client.getName());
                     mb.reset().compositeMessage(END).setRecipients(client).build().send();
                     timer.cancel();
                 } else {

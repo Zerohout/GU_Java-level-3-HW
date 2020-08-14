@@ -1,0 +1,62 @@
+<Configuration>
+    <Properties>
+        <Property name="basePath">logs</Property>
+    </Properties>
+    <Appenders>
+        <!--region Files-->
+        <File name="authService-file" fileName="${basePath}/authService-logfile.log">
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd HH:mm:ss,SSS} %-5level ${PID:- } --- [%t] %-40.40logger{39} : %m%n%throwable"/>
+        </File>
+        <File name="serverCommandHandler-file" fileName="${basePath}/serverCommandHandler-logfile.log">
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd HH:mm:ss,SSS} %-5level ${PID:- } --- [%t] %-40.40logger{39} : %m%n%throwable"/>
+        </File>
+        <File name="serverHandler-file" fileName="${basePath}/serverHandler-logfile.log">
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd HH:mm:ss,SSS} %-5level ${PID:- } --- [%t] %-40.40logger{39} : %m%n%throwable"/>
+        </File>
+        <!--endregion-->
+
+        <!--region Rolling files-->
+        <RollingFile name="authService-rollingFile" fileName="${basePath}/authService-rolling.log"
+                     filePattern="${basePath}/authService-rolling-%d{MM-dd-yy}.log.zip">
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd HH:mm:ss,SSS} %-5level ${PID:- } --- [%t] %-40.40logger{39} : %m%n%throwable"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="25M"/>
+            </Policies>
+        </RollingFile>
+        <RollingFile name="serverCommandHandler-rollingFile" fileName="${basePath}/serverCommandHandler-rolling.log"
+                     filePattern="${basePath}/serverCommandHandler-rolling-%d{MM-dd-yy}.log.zip">
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd HH:mm:ss,SSS} %-5level ${PID:- } --- [%t] %-40.40logger{39} : %m%n%throwable"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="25M"/>
+            </Policies>
+        </RollingFile>
+        <RollingFile name="serverHandler-rollingFile" fileName="${basePath}/serverHandler-rolling.log"
+                     filePattern="${basePath}/serverHandler-rolling-%d{MM-dd-yy}.log.zip">
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd HH:mm:ss,SSS} %-5level ${PID:- } --- [%t] %-40.40logger{39} : %m%n%throwable"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="25M"/>
+            </Policies>
+        </RollingFile>
+        <!--endregion-->
+    </Appenders>
+    <Loggers>
+        <Logger name="AuthService.AuthService" level="INFO" additivity="false">
+            <AppenderRef ref="authService-file"/>
+            <AppenderRef ref="authService-rollingFile"/>
+        </Logger>
+        <Logger name="Server.ServerCommandHandler" level="INFO" additivity="false">
+            <AppenderRef ref="serverCommandHandler-file"/>
+            <AppenderRef ref="serverCommandHandler-rollingFile"/>
+        </Logger>
+        <Logger name="Server.ServerHandler" level="INFO" additivity="false">
+            <AppenderRef ref="serverHandler-file"/>
+            <AppenderRef ref="serverHandler-rollingFile"/>
+        </Logger>
+    </Loggers>
+</Configuration>
