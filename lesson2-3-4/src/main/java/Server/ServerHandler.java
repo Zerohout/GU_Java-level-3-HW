@@ -6,6 +6,8 @@ import Database.DatabaseHelper;
 import Helpers.Sendable;
 import Message.Message;
 import Message.MessageBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -27,6 +29,7 @@ public class ServerHandler implements Sendable {
     public final static String SERVER_NAME = "SERVER";
     private boolean isStopped;
     private MessageBuilder mb;
+    private static final Logger logger = LogManager.getLogger(ServerHandler.class);
 
     //region Getters
     public AuthService getAuthService() {
@@ -37,10 +40,6 @@ public class ServerHandler implements Sendable {
     public String getName() {
         return SERVER_NAME;
     }
-
-//    public HashSet<ClientHandler> getOnlineClients() {
-//        return onlineClients;
-//    }
 
     public static ClientHandler getClientByNickname(String nickname) {
         for (var client : onlineClients) {
@@ -58,7 +57,6 @@ public class ServerHandler implements Sendable {
     }
 
     //endregion
-
     public ServerHandler(int port, ServerApp serverApp) {
         this.mb = new MessageBuilder();
         this.port = port;
@@ -73,14 +71,17 @@ public class ServerHandler implements Sendable {
             authService = new AuthService();
             authService.start();
             commandHandler = new ServerCommandHandler(this);
+            logger.info("Сервер был включен на порте: " + port);
             serverApp.sendLocalMessage("Server started on port: " + port);
             while (!server.isClosed() && !isStopped) {
                 Socket socket = server.accept();
+                logger.info("Клиент был подключен под сокетом {}", socket.toString());
                 serverApp.sendLocalMessage(String.format("Client connected on %s", socket.toString()));
                 var client = new ClientHandler(this, socket);
                 addNotAuthClient(client);
             }
         } catch (Exception ex) {
+            logger.error("{}", ex.getMessage(), ex);
             // ex.printStackTrace();
         } finally {
             if (!isStopped) {
@@ -107,20 +108,24 @@ public class ServerHandler implements Sendable {
         mb.convertMsgToBuilder(msg).isSystem(isSystem)
                 .setRecipients(new ArrayList<>(onlineClients))
                 .addRecipients(this).build().sendLocal();
+        logger.info("Транслировано сообщение {} все клиентам: {}", msg.getConnectedText(), getNicknames().toString());
     }
 
     @Override
     public void sendMessage(Message msg) {
         if (msg.isCommand()) {
+            logger.info("Сообщение {} определено как команда и отправлено на обработку", msg.getConnectedText());
             commandHandler.serverCommandListener(msg);
             return;
         }
+        logger.info("Сообщение {} отправлено на общую трансляцию", msg.getConnectedText());
         broadcastMessage(msg, false);
     }
 
     @Override
     public void sendLocalMessage(Message msg) {
         serverApp.sendLocalMessage(msg.getConnectedText());
+        logger.info("Отправлено локальное собщение ClientApp: {}", msg.getConnectedText());
     }
     //endregion
 
@@ -128,6 +133,7 @@ public class ServerHandler implements Sendable {
     public synchronized void subscribe(ClientHandler client) {
         notAuthClients.remove(client);
         onlineClients.add(client);
+        logger.info("Клиент {} подписан на сервер", client.getName());
         broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "come in chat.")).build(), true);
     }
 
@@ -136,6 +142,7 @@ public class ServerHandler implements Sendable {
         onlineClients.remove(client);
         client.isAuth(false);
         addNotAuthClient(client);
+        logger.info("Клиент {} отписан от сервера", client.getName());
         broadcastMessage(mb.reset().setRecipients(this).setServerSystemMessage(connectWords(client.getName(), "left the chat.")).build(), true);
     }
 
@@ -145,6 +152,7 @@ public class ServerHandler implements Sendable {
     }
 
     private void closeClients() {
+        logger.info("Производится закрытие клиентов");
         var users = DatabaseHelper.getOnlineUsers();
         if (users == null) throw new RuntimeException("users is null");
         for (var i = 0; i < users.size(); i++) {
@@ -160,6 +168,7 @@ public class ServerHandler implements Sendable {
     }
 
     public void closeClient(ClientHandler client) throws IOException {
+        var clientName = client.getName();
         DatabaseHelper.updateUserIsOnlineStatus(client.getName(), false);
         onlineClients.remove(client);
         notAuthClients.remove(client);
@@ -170,6 +179,7 @@ public class ServerHandler implements Sendable {
                     .setRecipients(this).build().send();
         }
         client.closeClientHandler();
+        logger.info("Клиент {} закрыт", clientName);
     }
     //endregion
 }
